@@ -1,4 +1,4 @@
-DC := docker-compose -f deployment/docker-compose.yml --env-file deployment/.env
+DC := docker compose -f deployment/docker-compose.yml --env-file deployment/.env
 ENV_FILE := deployment/.env
 
 .DEFAULT_GOAL := help
@@ -7,7 +7,7 @@ build:
 	$(DC) build
 
 up:
-	$(DC) up -d
+	$(DC) up
 
 down:
 	$(DC) down

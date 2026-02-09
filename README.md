@@ -150,10 +150,10 @@ All services expose `/metrics` endpoints:
 
 ```bash
 # Rebuild specific service
-docker-compose -f deployment/docker-compose.yml build incident-management
+docker compose -f deployment/docker-compose.yml build incident-management
 
 # Restart specific service
-docker-compose -f deployment/docker-compose.yml restart incident-management
+docker compose -f deployment/docker-compose.yml restart incident-management
 
 # Shell into container
 docker exec -it incident-management bash

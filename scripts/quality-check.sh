@@ -93,7 +93,7 @@ done
 echo
 echo "5. Docker Compose Configuration"
 echo -n "  Validating docker-compose.yml... "
-if docker-compose -f deployment/docker-compose.yml config >/dev/null 2>&1; then
+if docker compose -f deployment/docker-compose.yml config >/dev/null 2>&1; then
     echo "✓ OK"
 else
     echo "✗ INVALID"

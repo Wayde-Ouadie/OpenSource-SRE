@@ -2,9 +2,9 @@
 
 echo "==> Scanning container images for vulnerabilities (trivy)..."
 
-docker-compose -f deployment/docker-compose.yml build
+docker compose -f deployment/docker-compose.yml build
 
-images=$(docker-compose -f deployment/docker-compose.yml config | awk '/image:/{print $2}' | grep "ims/" | sort -u || true)
+images=$(docker compose -f deployment/docker-compose.yml config | awk '/image:/{print $2}' | grep "ims/" | sort -u || true)
 
 if [ -z "$images" ]; then
     echo "⊘ No custom images found to scan."
