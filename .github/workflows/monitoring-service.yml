@@ -1,0 +1,23 @@
+name: monitoring-service
+
+on:
+  push:
+    paths:
+      - "monitoring-service/**"
+      - ".github/workflows/**"
+  pull_request:
+    paths:
+      - "monitoring-service/**"
+      - ".github/workflows/**"
+
+jobs:
+  build:
+    uses: ./.github/workflows/_docker-build.yml
+    with:
+      name: monitoring-service
+      context: ./monitoring-service
+      dockerfile: ./monitoring-service/Dockerfile
+      tag: ims/monitoring-service:ci
+      smoke: true
+      container_port: 8000
+      health_path: /health

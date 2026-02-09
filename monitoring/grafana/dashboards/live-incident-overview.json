@@ -1,0 +1,54 @@
+{
+  "uid": "live-incident-overview",
+  "title": "Live Incident Overview (Skeleton)",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Open Incidents",
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(incidents_total{status=\"open\"})"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Incidents Created (rate)",
+      "gridPos": {"x": 6, "y": 0, "w": 18, "h": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(incidents_total{status=\"open\"}[5m]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Alerts Received (rate)",
+      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (severity) (rate(alerts_received_total[5m]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Alert Correlation Outcomes (rate)",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (result) (rate(alerts_correlated_total[5m]))"
+        }
+      ]
+    }
+  ]
+}

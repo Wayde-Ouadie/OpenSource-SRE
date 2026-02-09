@@ -1,0 +1,23 @@
+name: notification
+
+on:
+  push:
+    paths:
+      - "notification-service/**"
+      - ".github/workflows/**"
+  pull_request:
+    paths:
+      - "notification-service/**"
+      - ".github/workflows/**"
+
+jobs:
+  build:
+    uses: ./.github/workflows/_docker-build.yml
+    with:
+      name: notification
+      context: ./notification-service
+      dockerfile: ./notification-service/Dockerfile
+      tag: ims/notification:ci
+      smoke: true
+      container_port: 8004
+      health_path: /health

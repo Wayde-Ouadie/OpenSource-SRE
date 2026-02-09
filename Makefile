@@ -1,0 +1,97 @@
+DC := docker-compose -f deployment/docker-compose.yml --env-file deployment/.env
+ENV_FILE := deployment/.env
+
+.DEFAULT_GOAL := help
+
+build:
+	$(DC) build
+
+up:
+	$(DC) up -d
+
+down:
+	$(DC) down
+
+logs:
+	$(DC) logs -f
+
+ps:
+	$(DC) ps
+
+re:
+	@docker rm -f postgres prometheus grafana incident-management web-ui \
+		alert-ingestion oncall-service notification-service gateway monitoring 2>/dev/null || true
+	$(DC) down --volumes --remove-orphans
+	$(DC) build
+	$(DC) up -d
+
+health:
+	@bash scripts/smoke-test.sh
+
+test-integration:
+	@bash scripts/integration-test.sh
+
+test-e2e:
+	@bash scripts/e2e-test.sh
+
+test-load:
+	@bash scripts/load-test.sh
+
+test-metrics:
+	@bash scripts/metrics-test.sh
+
+test-security:
+	@bash scripts/security-scan.sh
+
+test-quality:
+	@bash scripts/quality-check.sh
+
+test-all: health test-integration test-e2e test-metrics
+	@echo ""
+	@echo "✓ All tests completed!"
+
+pipeline:
+	@bash run-pipeline.sh
+
+workflow-quality:
+	@bash scripts/workflows-tests/quality-check-workflow.sh
+
+workflow-security:
+	@bash scripts/workflows-tests/security-scan-workflow.sh
+
+workflow-build:
+	@bash scripts/workflows-tests/build-images-workflow.sh
+
+workflow-scan:
+	@bash scripts/workflows-tests/scan-images-workflow.sh
+
+workflow-deploy:
+	@bash scripts/workflows-tests/deploy-stack-workflow.sh
+
+workflow-verify:
+	@bash scripts/workflows-tests/verify-deployment-workflow.sh
+
+all-workflows: workflow-quality workflow-security workflow-build workflow-deploy workflow-verify
+	@echo ""
+	@echo "✓ All workflow tests completed!"
+
+workflow-act:
+	@if ! command -v act >/dev/null 2>&1; then \
+		echo "✗ 'act' is not installed. Install it with:"; \
+		echo "  curl https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash"; \
+		exit 1; \
+	fi
+	@act -W .github/workflows/pipeline.yml
+
+clean:
+	$(DC) down --rmi all --volumes --remove-orphans
+	@docker system prune -f
+
+status:
+	@echo "==> Service Status"
+	@$(DC) ps
+	@echo ""
+	@echo "==> Quick Metrics Check"
+	@curl -s http://localhost:8002/metrics 2>/dev/null | grep -E "incidents_total|incident_mtta|incident_mttr" || echo "Metrics not available"
+
+.phony: build up down logs ps re health test-integration test-e2e test-load test-metrics test-security test-quality test-all pipeline workflow-quality workflow-security workflow-build workflow-scan workflow-deploy workflow-verify all-workflows workflow-act clean status

@@ -1,0 +1,50 @@
+name: _docker-build
+
+on:
+  workflow_call:
+    inputs:
+      name:
+        type: string
+        required: true
+      context:
+        type: string
+        required: true
+      dockerfile:
+        type: string
+        required: true
+      tag:
+        type: string
+        required: true
+      smoke:
+        type: boolean
+        required: false
+        default: false
+      container_port:
+        type: number
+        required: false
+        default: 8000
+      health_path:
+        type: string
+        required: false
+        default: /health
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and test service
+        run: |
+          if [ "${{ inputs.smoke }}" = "true" ]; then
+            bash scripts/workflows-tests/docker-build-service.sh \
+              "${{ inputs.name }}" \
+              "${{ inputs.context }}" \
+              "${{ inputs.dockerfile }}" \
+              "${{ inputs.tag }}" \
+              "${{ inputs.container_port }}" \
+              "${{ inputs.health_path }}"
+          else
+            docker build -t "${{ inputs.tag }}" -f "${{ inputs.dockerfile }}" "${{ inputs.context }}"
+            echo "✓ Image built: ${{ inputs.tag }}"
+          fi
