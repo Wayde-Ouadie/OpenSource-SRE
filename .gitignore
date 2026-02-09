@@ -1,3 +1,5 @@
+# Local env overrides (do not commit)
+.env
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -205,3 +207,219 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# =============================================================================
+# Node.js / NPM / Frontend
+# =============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
+web-ui-service/dist/
+web-ui-service/build/
+**/dist/
+**/build/
+
+# Dependencies
+.pnp
+.pnp.js
+
+# =============================================================================
+# Docker & Containers
+# =============================================================================
+# Volume data (don't commit database/persistent data)
+postgres_data/
+prometheus_data/
+grafana_data/
+
+# Docker override files
+docker-compose.override.yml
+deployment/.env
+
+# =============================================================================
+# IDE & Editors
+# =============================================================================
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# IntelliJ IDEA / PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+*.swp
+*.swo
+*~
+.vim/
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+
+# =============================================================================
+# Operating Systems
+# =============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+.nfs*
+
+# =============================================================================
+# Logs & Temporary Files
+# =============================================================================
+*.log
+logs/
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+# Service-specific logs
+*-service/**/*.log
+incident-management-service/**/*.log
+alert-ingestion-service/**/*.log
+oncall-service/**/*.log
+notification-service/**/*.log
+monitoring-service/**/*.log
+gateway-service/**/*.log
+
+# =============================================================================
+# Local Development
+# =============================================================================
+# Local configuration overrides
+*.local
+.env.local
+.env.*.local
+config.local.*
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+
+# =============================================================================
+# Security & Secrets
+# =============================================================================
+# Never commit secrets
+secrets/
+*.pem
+*.key
+*.cert
+*.crt
+id_rsa*
+*.pfx
+
+# JWT tokens and API keys
+.secrets
+jwt-secret
+
+# =============================================================================
+# Database
+# =============================================================================
+*.db
+*.sqlite
+*.sqlite3
+
+# =============================================================================
+# Monitoring & Observability
+# =============================================================================
+# Prometheus data
+monitoring/prometheus/data/
+
+# Grafana data
+monitoring/grafana/data/
+
+# =============================================================================
+# Miscellaneous
+# =============================================================================
+# Compiled source
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.pyc
+
+# Archives
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Project-specific
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+
+# Act (local GitHub Actions runner)
+.secrets.env
+
+# Scratch files
+scratch/
+temp/
+tmp/

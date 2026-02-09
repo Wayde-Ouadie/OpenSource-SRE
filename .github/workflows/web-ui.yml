@@ -1,0 +1,23 @@
+name: web-ui
+
+on:
+  push:
+    paths:
+      - "web-ui-service/**"
+      - ".github/workflows/**"
+  pull_request:
+    paths:
+      - "web-ui-service/**"
+      - ".github/workflows/**"
+
+jobs:
+  build:
+    uses: ./.github/workflows/_docker-build.yml
+    with:
+      name: web-ui
+      context: ./web-ui-service
+      dockerfile: ./web-ui-service/Dockerfile
+      tag: ims/web-ui:ci
+      smoke: true
+      container_port: 8080
+      health_path: /health

@@ -1,0 +1,23 @@
+name: incident-management
+
+on:
+  push:
+    paths:
+      - " incident-management-service/**"
+      - ".github/workflows/**"
+  pull_request:
+    paths:
+      - " incident-management-service/**"
+      - ".github/workflows/**"
+
+jobs:
+  build:
+    uses: ./.github/workflows/_docker-build.yml
+    with:
+      name: incident-management
+      context: "./ incident-management-service"
+      dockerfile: "./ incident-management-service/Dockerfile"
+      tag: ims/incident-management:ci
+      smoke: false
+      container_port: 8002
+      health_path: /health

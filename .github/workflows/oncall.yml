@@ -1,0 +1,23 @@
+name: oncall
+
+on:
+  push:
+    paths:
+      - "oncall-service/**"
+      - ".github/workflows/**"
+  pull_request:
+    paths:
+      - "oncall-service/**"
+      - ".github/workflows/**"
+
+jobs:
+  build:
+    uses: ./.github/workflows/_docker-build.yml
+    with:
+      name: oncall
+      context: ./oncall-service
+      dockerfile: ./oncall-service/Dockerfile
+      tag: ims/oncall:ci
+      smoke: true
+      container_port: 8003
+      health_path: /health

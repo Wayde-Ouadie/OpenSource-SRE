@@ -1,0 +1,200 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-incident_management}
+      POSTGRES_USER: ${POSTGRES_USER:-opensource}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opensource}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [incident-platform]
+
+  incident-management:
+    image: ims/incident-management:local
+    container_name: incident-management
+    build:
+      context: ../incident-management-service
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://opensource:opensource@postgres:5432/incident_management}
+      ONCALL_BASE_URL: ${ONCALL_BASE_URL:-http://oncall-service:8003}
+      NOTIFICATION_BASE_URL: ${NOTIFICATION_BASE_URL:-http://notification-service:8004}
+      TZ: ${TZ:-UTC}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${INCIDENT_MGMT_PORT:-8002}:8002"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8002/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks: [incident-platform]
+
+  alert-ingestion:
+    image: ims/alert-ingestion:local
+    container_name: alert-ingestion
+    build:
+      context: ../alert-ingestion-service
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://opensource:opensource@postgres:5432/incident_management}
+      INCIDENT_MGMT_BASE_URL: ${INCIDENT_MGMT_BASE_URL:-http://incident-management:8002}
+      TZ: ${TZ:-UTC}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${ALERT_INGESTION_PORT:-8001}:8001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8001/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks: [incident-platform]
+
+  oncall-service:
+    image: ims/oncall:local
+    container_name: oncall-service
+    build:
+      context: ../oncall-service
+      dockerfile: Dockerfile
+    ports:
+      - "${ONCALL_PORT:-8003}:8003"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8003/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks: [incident-platform]
+
+  notification-service:
+    image: ims/notification:local
+    container_name: notification-service
+    build:
+      context: ../notification-service
+      dockerfile: Dockerfile
+    ports:
+      - "${NOTIFICATION_PORT:-8004}:8004"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8004/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks: [incident-platform]
+
+  web-ui:
+    image: ims/web-ui:local
+    container_name: web-ui
+    build:
+      context: ../web-ui-service
+      dockerfile: Dockerfile
+    depends_on:
+      incident-management:
+        condition: service_started
+    ports:
+      - "${WEB_UI_PORT:-8080}:8080"
+    entrypoint: ["nginx", "-g", "daemon off;"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/health | grep -q ok"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    networks: [incident-platform]
+
+  gateway:
+    image: ims/gateway:local
+    container_name: gateway
+    build:
+      context: ../gateway-service
+      dockerfile: Dockerfile
+    environment:
+      INCIDENT_MGMT_BASE_URL: ${INCIDENT_MGMT_BASE_URL:-http://incident-management:8002}
+    depends_on:
+      incident-management:
+        condition: service_started
+    ports:
+      - "${GATEWAY_PORT:-8010}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks: [incident-platform]
+
+  monitoring:
+    image: ims/monitoring:local
+    container_name: monitoring
+    build:
+      context: ../monitoring-service
+      dockerfile: Dockerfile
+    ports:
+      - "${MONITORING_PORT:-8011}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks: [incident-platform]
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: prometheus
+    volumes:
+      - ../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9090/-/healthy >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks: [incident-platform]
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      prometheus:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/api/health | grep -q ok"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks: [incident-platform]
+
+volumes:
+  postgres_data:
+    name: postgres_data
+  prometheus_data:
+    name: prometheus_data
+  grafana_data:
+    name: grafana_data
+
+networks:
+  incident-platform:
+    driver: bridge

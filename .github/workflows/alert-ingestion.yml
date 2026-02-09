@@ -1,0 +1,23 @@
+name: alert-ingestion
+
+on:
+  push:
+    paths:
+      - "alert-ingestion-service/**"
+      - ".github/workflows/**"
+  pull_request:
+    paths:
+      - "alert-ingestion-service/**"
+      - ".github/workflows/**"
+
+jobs:
+  build:
+    uses: ./.github/workflows/_docker-build.yml
+    with:
+      name: alert-ingestion
+      context: ./alert-ingestion-service
+      dockerfile: ./alert-ingestion-service/Dockerfile
+      tag: ims/alert-ingestion:ci
+      smoke: true
+      container_port: 8001
+      health_path: /health

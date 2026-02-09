@@ -1,0 +1,52 @@
+name: pipeline
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "**"
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Basic quality checks (syntax + build)
+        run: bash scripts/workflows-tests/quality-check-workflow.sh
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Secret scan (gitleaks)
+        run: bash scripts/workflows-tests/security-scan-workflow.sh
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images
+        run: bash scripts/workflows-tests/build-images-workflow.sh
+
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Container scan (trivy)
+        run: bash scripts/workflows-tests/scan-images-workflow.sh
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [quality, security, build]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy stack
+        run: bash scripts/workflows-tests/deploy-stack-workflow.sh
+
+  verify:
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Post-deploy verification
+        run: bash scripts/workflows-tests/verify-deployment-workflow.sh
