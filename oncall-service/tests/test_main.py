@@ -3,21 +3,43 @@ from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from app.main import SCHEDULES, _current_from_schedule, _escalated_incidents, _parse_dt, app
+import app.main as mod
+from app.tracing import init_tracing
 
 
-@pytest.fixture(autouse=True)
-def _patch_env(monkeypatch):
-    monkeypatch.setenv("INCIDENT_MGMT_BASE_URL", "http://fake:8002")
-    monkeypatch.setenv("NOTIFICATION_BASE_URL", "http://fake:8004")
-
+# ---------------------------------------------------------------------------
+# Shared fixtures
+# ---------------------------------------------------------------------------
 
 @pytest.fixture()
 def client():
-    SCHEDULES.clear()
-    _escalated_incidents.clear()
-    return TestClient(app)
+    """Create a test client backed by an in-memory SQLite database."""
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    # SQLite does not support schema-qualified table names; strip them.
+    for table in mod.Base.metadata.tables.values():
+        table.schema = None
+    mod.Base.metadata.create_all(bind=engine)
+    _Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+    orig_engine = mod.engine
+    orig_session = mod.SessionLocal
+
+    mod.engine = engine
+    mod.SessionLocal = _Session
+    mod._escalated_incidents.clear()
+
+    yield TestClient(mod.app)
+
+    mod.engine = orig_engine
+    mod.SessionLocal = orig_session
 
 
 # ---------------------------------------------------------------------------
@@ -26,38 +48,36 @@ def client():
 
 class TestParseDt:
     def test_none_returns_now(self):
-        result = _parse_dt(None)
+        result = mod._parse_dt(None)
         assert result.tzinfo is not None
 
     def test_zulu(self):
-        result = _parse_dt("2026-01-15T12:00:00Z")
+        result = mod._parse_dt("2026-01-15T12:00:00Z")
         assert result.year == 2026
 
     def test_iso(self):
-        result = _parse_dt("2026-01-15T12:00:00+00:00")
+        result = mod._parse_dt("2026-01-15T12:00:00+00:00")
         assert result.year == 2026
 
     def test_naive_gets_utc(self):
-        result = _parse_dt("2026-03-01T10:00:00")
+        result = mod._parse_dt("2026-03-01T10:00:00")
         assert result.tzinfo == UTC
 
 
 class TestCurrentFromSchedule:
-    def test_schedule_not_found(self):
-        SCHEDULES.clear()
+    def test_schedule_not_found(self, client):
         from fastapi import HTTPException
         with pytest.raises(HTTPException):
-            _current_from_schedule("nonexistent")
+            mod._current_from_schedule("nonexistent")
 
-    def test_returns_primary(self):
-        SCHEDULES.clear()
-        SCHEDULES["team-a"] = {
+    def test_returns_primary(self, client):
+        client.post("/api/v1/schedules", json={
+            "team": "team-a",
             "primary": ["alice", "bob"],
             "secondary": ["carol"],
             "rotation": "daily",
-            "starts_at": datetime.now(UTC),
-        }
-        result = _current_from_schedule("team-a")
+        })
+        result = mod._current_from_schedule("team-a")
         assert result["team"] == "team-a"
         assert result["primary"] in ["alice", "bob"]
         assert result["secondary"] == "carol"
@@ -162,3 +182,97 @@ class TestEscalate:
     def test_escalate_missing_team(self, client):
         r = client.post("/api/v1/escalate", json={"team": "nope"})
         assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage tests
+# ---------------------------------------------------------------------------
+
+class TestReadSecret:
+    def test_from_env(self, monkeypatch):
+        monkeypatch.setenv("MY_VAR", "env_val")
+        monkeypatch.delenv("MY_VAR_FILE", raising=False)
+        assert mod._read_secret("MY_VAR") == "env_val"
+
+    def test_from_file(self, monkeypatch, tmp_path):
+        f = tmp_path / "s.txt"
+        f.write_text("file_val\n")
+        monkeypatch.setenv("MY_VAR_FILE", str(f))
+        monkeypatch.delenv("MY_VAR", raising=False)
+        assert mod._read_secret("MY_VAR") == "file_val"
+
+    def test_file_not_found_falls_back(self, monkeypatch):
+        monkeypatch.setenv("MY_VAR_FILE", "/nonexistent/path")
+        monkeypatch.setenv("MY_VAR", "fallback")
+        assert mod._read_secret("MY_VAR") == "fallback"
+
+    def test_default(self, monkeypatch):
+        monkeypatch.delenv("NOPE", raising=False)
+        monkeypatch.delenv("NOPE_FILE", raising=False)
+        assert mod._read_secret("NOPE", "default") == "default"
+
+
+class TestBuildDatabaseUrl:
+    def test_uses_env(self, monkeypatch):
+        monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+        monkeypatch.delenv("DATABASE_PASSWORD", raising=False)
+        monkeypatch.delenv("DATABASE_PASSWORD_FILE", raising=False)
+        assert mod._build_database_url() == "sqlite:///:memory:"
+
+    def test_replaces_password(self, monkeypatch):
+        monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg2://user:old@host:5432/db")
+        monkeypatch.setenv("DATABASE_PASSWORD", "newpass")
+        monkeypatch.delenv("DATABASE_PASSWORD_FILE", raising=False)
+        result = mod._build_database_url()
+        assert "newpass" in result
+        assert "old" not in result
+
+
+class TestUpdateSchedule:
+    def test_update_existing_schedule(self, client):
+        """Creating a schedule with the same team name should update it."""
+        client.post("/api/v1/schedules", json={
+            "team": "update-team", "primary": ["alice"], "rotation": "weekly"
+        })
+        r = client.post("/api/v1/schedules", json={
+            "team": "update-team", "primary": ["bob", "carol"], "rotation": "daily"
+        })
+        assert r.status_code == 200
+        # Verify updated
+        r2 = client.get("/api/v1/oncall/current?team=update-team")
+        assert r2.status_code == 200
+        assert r2.json()["primary"] in ["bob", "carol"]
+        assert r2.json()["rotation"] == "daily"
+
+
+class TestRootEndpoint:
+    def test_openapi_docs(self, client):
+        r = client.get("/openapi.json")
+        assert r.status_code == 200
+        assert r.json()["info"]["title"] == "oncall-service"
+
+
+class TestScheduleWithTimestamp:
+    def test_create_with_starts_at(self, client):
+        r = client.post("/api/v1/schedules", json={
+            "team": "ts-team",
+            "primary": ["alice"],
+            "rotation": "daily",
+            "starts_at": "2026-01-01T00:00:00Z",
+        })
+        assert r.status_code == 200
+
+    def test_list_schedules_details(self, client):
+        client.post("/api/v1/schedules", json={
+            "team": "detail-team", "primary": ["alice", "bob"],
+            "secondary": ["carol"], "rotation": "weekly",
+        })
+        r = client.get("/api/v1/schedules")
+        items = r.json()["items"]
+        assert len(items) == 1
+        item = items[0]
+        assert item["team"] == "detail-team"
+        assert item["primary"] == ["alice", "bob"]
+        assert item["secondary"] == ["carol"]
+        assert item["rotation"] == "weekly"
+        assert "starts_at" in item

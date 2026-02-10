@@ -1,8 +1,11 @@
 """Tests for notification-service API endpoints."""
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import VALID_CHANNELS, _read_secret, app
+from app.tracing import init_tracing
 
 
 @pytest.fixture()
@@ -126,3 +129,145 @@ class TestNotify:
             "channel": "slack",
         })
         assert r.status_code == 201
+
+
+class TestReadSecretEdge:
+    def test_file_not_found_falls_back(self, monkeypatch):
+        monkeypatch.setenv("X_FILE", "/nonexistent/path/secret.txt")
+        monkeypatch.setenv("X", "env_fallback")
+        assert _read_secret("X") == "env_fallback"
+
+    def test_file_not_found_no_env(self, monkeypatch):
+        monkeypatch.setenv("Y_FILE", "/nonexistent/path")
+        monkeypatch.delenv("Y", raising=False)
+        assert _read_secret("Y") == ""
+
+
+class TestNotifyEdge:
+    def test_email_with_placeholder_key(self, client, monkeypatch):
+        """Email channel with PLACEHOLDER key should log warning but still succeed."""
+        monkeypatch.setenv("RESEND_API_KEY", "PLACEHOLDER_KEY")
+        monkeypatch.delenv("RESEND_API_KEY_FILE", raising=False)
+        r = client.post("/api/v1/notify", json={
+            "incident_id": "inc-ph",
+            "message": "Placeholder email test",
+            "channel": "email",
+        })
+        assert r.status_code == 201
+
+    def test_email_with_real_key_success(self, client, monkeypatch):
+        """Email channel with a real key should call Resend API."""
+        monkeypatch.setenv("RESEND_API_KEY", "re_real_key_123")
+        monkeypatch.delenv("RESEND_API_KEY_FILE", raising=False)
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = lambda: None
+        mock_response.json = lambda: {"id": "email-123"}
+
+        with patch("app.main.httpx.AsyncClient") as MockClient:
+            mock_client_instance = AsyncMock()
+            mock_client_instance.post.return_value = mock_response
+            mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+            MockClient.return_value = mock_client_instance
+
+            r = client.post("/api/v1/notify", json={
+                "incident_id": "inc-email-real",
+                "message": "Real email test",
+                "channel": "email",
+                "target": "user@example.com",
+            })
+            assert r.status_code == 201
+
+    def test_webhook_with_valid_url(self, client):
+        """Webhook with a valid URL should attempt delivery."""
+        with patch("app.main.httpx.AsyncClient") as MockClient:
+            mock_response = AsyncMock()
+            mock_response.status_code = 200
+            mock_response.raise_for_status = lambda: None
+
+            mock_client_instance = AsyncMock()
+            mock_client_instance.post.return_value = mock_response
+            mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+            MockClient.return_value = mock_client_instance
+
+            r = client.post("/api/v1/notify", json={
+                "incident_id": "inc-wh-url",
+                "message": "Webhook with URL",
+                "channel": "webhook",
+                "target": "http://example.com/webhook",
+            })
+            assert r.status_code == 201
+
+    def test_webhook_invalid_target(self, client):
+        """Webhook with non-http target is logged only."""
+        r = client.post("/api/v1/notify", json={
+            "incident_id": "inc-wh-bad",
+            "message": "Bad target",
+            "channel": "webhook",
+            "target": "not-a-url",
+        })
+        assert r.status_code == 201
+
+    def test_email_delivery_http_error(self, client, monkeypatch):
+        """Email delivery failure returns 502."""
+        import httpx as _httpx
+        monkeypatch.setenv("RESEND_API_KEY", "re_real_key_456")
+        monkeypatch.delenv("RESEND_API_KEY_FILE", raising=False)
+
+        with patch("app.main.httpx.AsyncClient") as MockClient:
+            mock_response = AsyncMock()
+            mock_response.status_code = 500
+
+            def _raise():
+                raise _httpx.HTTPStatusError(
+                    "Server Error",
+                    request=_httpx.Request("POST", "https://api.resend.com/emails"),
+                    response=_httpx.Response(500),
+                )
+            mock_response.raise_for_status = _raise
+
+            mock_client_instance = AsyncMock()
+            mock_client_instance.post.return_value = mock_response
+            mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+            MockClient.return_value = mock_client_instance
+
+            r = client.post("/api/v1/notify", json={
+                "incident_id": "inc-fail",
+                "message": "Fail email",
+                "channel": "email",
+            })
+            assert r.status_code == 502
+
+    def test_generic_exception_returns_500(self, client, monkeypatch):
+        """Generic exception during delivery returns 500."""
+        monkeypatch.setenv("RESEND_API_KEY", "re_real_key_789")
+        monkeypatch.delenv("RESEND_API_KEY_FILE", raising=False)
+
+        with patch("app.main.httpx.AsyncClient") as MockClient:
+            mock_client_instance = AsyncMock()
+            mock_client_instance.post.side_effect = RuntimeError("Connection refused")
+            mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+            mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+            MockClient.return_value = mock_client_instance
+
+            r = client.post("/api/v1/notify", json={
+                "incident_id": "inc-generic-fail",
+                "message": "Generic fail",
+                "channel": "email",
+            })
+            assert r.status_code == 500
+
+
+class TestTracing:
+    def test_tracing_disabled_without_endpoint(self, monkeypatch):
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+        init_tracing(app)  # should be a no-op
+
+    def test_tracing_import_error(self, monkeypatch):
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://fake:4317")
+        # This will either succeed (if otel is installed) or hit ImportError
+        init_tracing(app)

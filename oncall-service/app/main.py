@@ -142,6 +142,8 @@ def _current_from_schedule(team: str) -> dict[str, Any]:
             raise HTTPException(status_code=404, detail="schedule_not_found")
 
         start = schedule.starts_at
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=UTC)
         rotation = schedule.rotation
         primary = schedule.primary
         secondary = schedule.secondary or []
@@ -264,9 +266,10 @@ async def _escalation_loop():
 async def lifespan(app: FastAPI):
     logger.info("On-call service starting — creating database tables")
     # Ensure the 'oncall' schema exists before creating tables
-    with engine.connect() as conn:
-        conn.execute(__import__("sqlalchemy").text("CREATE SCHEMA IF NOT EXISTS oncall"))
-        conn.commit()
+    if "sqlite" not in DATABASE_URL:
+        with engine.connect() as conn:
+            conn.execute(__import__("sqlalchemy").text("CREATE SCHEMA IF NOT EXISTS oncall"))
+            conn.commit()
     Base.metadata.create_all(bind=engine)
     task = asyncio.create_task(_escalation_loop())
     yield

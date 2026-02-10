@@ -225,9 +225,10 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Creating database schema and tables (if not exist)")
-    with engine.connect() as conn:
-        conn.execute(__import__("sqlalchemy").text("CREATE SCHEMA IF NOT EXISTS incident_management"))
-        conn.commit()
+    if "sqlite" not in DATABASE_URL:
+        with engine.connect() as conn:
+            conn.execute(__import__("sqlalchemy").text("CREATE SCHEMA IF NOT EXISTS incident_management"))
+            conn.commit()
     Base.metadata.create_all(bind=engine)
     logger.info("Incident-management service ready")
     yield

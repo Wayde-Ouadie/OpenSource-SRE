@@ -26,6 +26,9 @@ def client():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    # SQLite does not support schema-qualified table names; strip them.
+    for table in mod.Base.metadata.tables.values():
+        table.schema = None
     mod.Base.metadata.create_all(bind=engine)
     _Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
@@ -337,3 +340,151 @@ class TestAddNote:
             "content": "x", "author": "a"
         })
         assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage tests
+# ---------------------------------------------------------------------------
+
+class TestBuildDatabaseUrl:
+    def test_uses_env(self, monkeypatch):
+        monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+        monkeypatch.delenv("DATABASE_PASSWORD", raising=False)
+        monkeypatch.delenv("DATABASE_PASSWORD_FILE", raising=False)
+        assert mod._build_database_url() == "sqlite:///:memory:"
+
+    def test_replaces_password(self, monkeypatch):
+        monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg2://user:old@host:5432/db")
+        monkeypatch.setenv("DATABASE_PASSWORD", "newpass")
+        monkeypatch.delenv("DATABASE_PASSWORD_FILE", raising=False)
+        result = mod._build_database_url()
+        assert "newpass" in result
+        assert "old" not in result
+
+
+class TestCreateHttpClient:
+    def test_creates_client(self):
+        import asyncio
+        c = mod._create_http_client()
+        assert c is not None
+        asyncio.get_event_loop().run_until_complete(c.aclose())
+
+
+class TestJsonFormatter:
+    def test_format_basic(self):
+        import json
+        import logging
+        formatter = mod.JSONFormatter()
+        record = logging.LogRecord(
+            name="test", level=logging.INFO,
+            pathname="test.py", lineno=1,
+            msg="test message", args=None, exc_info=None,
+        )
+        output = formatter.format(record)
+        data = json.loads(output)
+        assert data["message"] == "test message"
+        assert data["level"] == "INFO"
+
+    def test_format_with_extras(self):
+        import json
+        import logging
+        formatter = mod.JSONFormatter()
+        record = logging.LogRecord(
+            name="test", level=logging.WARNING,
+            pathname="test.py", lineno=1,
+            msg="incident created", args=None, exc_info=None,
+        )
+        record.service = "my-svc"
+        record.incident_id = "inc-001"
+        output = formatter.format(record)
+        data = json.loads(output)
+        assert data["service"] == "my-svc"
+        assert data["incident_id"] == "inc-001"
+
+    def test_format_with_exception(self):
+        import json
+        import logging
+        import sys
+        formatter = mod.JSONFormatter()
+        try:
+            raise ValueError("boom")
+        except ValueError:
+            exc_info = sys.exc_info()
+        record = logging.LogRecord(
+            name="test", level=logging.ERROR,
+            pathname="test.py", lineno=1,
+            msg="error", args=None, exc_info=exc_info,
+        )
+        output = formatter.format(record)
+        data = json.loads(output)
+        assert "exception" in data
+        assert "boom" in data["exception"]
+
+
+class TestUpdateIncidentEdge:
+    def test_update_description(self, client):
+        cr = client.post("/api/v1/incidents", json={
+            "service": "svc", "severity": "high", "title": "t"
+        })
+        inc_id = cr.json()["id"]
+        r = client.patch(f"/api/v1/incidents/{inc_id}", json={
+            "description": "Updated description"
+        })
+        assert r.status_code == 200
+        detail = client.get(f"/api/v1/incidents/{inc_id}")
+        assert detail.json()["description"] == "Updated description"
+
+    def test_invalid_uuid_patch(self, client):
+        r = client.patch("/api/v1/incidents/not-a-uuid", json={"status": "open"})
+        assert r.status_code == 400
+
+    def test_invalid_uuid_metrics(self, client):
+        r = client.get("/api/v1/incidents/not-a-uuid/metrics")
+        assert r.status_code == 400
+
+    def test_nonexistent_metrics(self, client):
+        r = client.get(f"/api/v1/incidents/{uuid.uuid4()}/metrics")
+        assert r.status_code == 404
+
+    def test_unassign(self, client):
+        cr = client.post("/api/v1/incidents", json={
+            "service": "svc", "severity": "high", "title": "t"
+        })
+        inc_id = cr.json()["id"]
+        client.patch(f"/api/v1/incidents/{inc_id}", json={"assigned_to": "alice"})
+        r = client.patch(f"/api/v1/incidents/{inc_id}", json={"assigned_to": ""})
+        assert r.status_code == 200
+
+
+class TestListIncidentsEdge:
+    def test_filter_by_severity(self, client):
+        client.post("/api/v1/incidents", json={
+            "service": "svc", "severity": "critical", "title": "crit"
+        })
+        client.post("/api/v1/incidents", json={
+            "service": "svc", "severity": "low", "title": "lo"
+        })
+        r = client.get("/api/v1/incidents?severity=critical")
+        assert r.json()["count"] == 1
+
+    def test_list_with_limit(self, client):
+        for i in range(5):
+            client.post("/api/v1/incidents", json={
+                "service": "svc", "severity": "low", "title": f"inc-{i}"
+            })
+        r = client.get("/api/v1/incidents?limit=2")
+        assert r.json()["count"] == 2
+
+
+class TestCreateIncidentEdge:
+    def test_create_with_extra_data(self, client):
+        r = client.post("/api/v1/incidents", json={
+            "service": "svc", "severity": "high", "title": "t",
+            "extra_data": {"runbook": "http://example.com"},
+            "description": "Detailed description",
+        })
+        assert r.status_code == 200
+        inc_id = r.json()["id"]
+        detail = client.get(f"/api/v1/incidents/{inc_id}")
+        assert detail.json()["extra_data"]["runbook"] == "http://example.com"
+        assert detail.json()["description"] == "Detailed description"
