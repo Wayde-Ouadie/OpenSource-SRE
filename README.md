@@ -11,13 +11,17 @@ Production-ready incident management and on-call platform — alert ingestion, c
 
 ## Quick Start 
 
+
 ```bash
 mkdir -p deployment/secrets                   # 1. Create secrets dir
 echo "supersecret" > deployment/secrets/postgres_password.txt && \
 echo "PLACEHOLDER" > deployment/secrets/resend_api_key.txt  # 2. Set secrets
-make re                                       # 3. Build & start everything
-make health                                   # 4. Verify all services are healthy
+cp deployment/.env.example deployment/.env    # 3. Copy env config
+make re                                       # 4. Build & start everything
+make health                                   # 5. Verify all services are healthy
 ```
+
+> **Note:** The `.env` file configures ports and service URLs. Copy it from `.env.example` before starting — edit values if you need to change default ports.
 
 **Access Points:**
 
