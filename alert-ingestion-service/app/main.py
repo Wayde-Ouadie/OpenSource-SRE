@@ -169,7 +169,7 @@ async def lifespan(app: FastAPI):
         logger.info("Creating database tables (if not exist)")
         Base.metadata.create_all(bind=engine)
     except Exception as e:
-        logger.warning(f"Database initialization skipped: {e}")
+        logger.warning(f"Database connection failed, service starting without database: {e}")
     logger.info("Alert-ingestion service ready")
     yield
 
