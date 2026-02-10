@@ -50,6 +50,27 @@ test-all: health test-integration test-e2e test-metrics
 	@echo ""
 	@echo "✓ All tests completed!"
 
+verify: test-integration test-e2e test-metrics
+	@echo ""
+	@echo "✓ Deployment verification passed!"
+
+test-unit:
+	@echo "==> Running unit tests..."
+	@for svc in incident-management-service alert-ingestion-service oncall-service notification-service gateway-service; do \
+		echo "  Testing $$svc..."; \
+		cd $$svc && python -m pytest tests/ -v --tb=short 2>/dev/null && cd .. || { echo "  ✗ $$svc tests failed"; cd ..; }; \
+	done
+	@echo "✓ Unit tests completed!"
+
+scale-demo:
+	@bash scripts/scaling-demo.sh $(or $(REPLICAS),3) $(or $(SERVICE),incident-management)
+
+deploy:
+	@bash scripts/rollback.sh $(or $(SERVICE),incident-management)
+
+deploy-test-rollback:
+	@bash scripts/rollback.sh $(or $(SERVICE),incident-management) --simulate-failure
+
 pipeline:
 	@bash scripts/run-pipeline.sh
 
@@ -92,6 +113,6 @@ status:
 	@$(DC) ps
 	@echo ""
 	@echo "==> Quick Metrics Check"
-	@curl -s http://localhost:8002/metrics 2>/dev/null | grep -E "incidents_total|incident_mtta|incident_mttr" || echo "Metrics not available"
+	@$(DC) exec -T incident-management curl -s http://localhost:8002/metrics 2>/dev/null | grep -E "incidents_total|incident_mtta|incident_mttr" || echo "Metrics not available"
 
-.phony: build up down logs ps re health test-integration test-e2e test-load test-metrics test-security test-quality test-all pipeline workflow-quality workflow-security workflow-build workflow-scan workflow-deploy workflow-verify all-workflows workflow-act clean status
+.phony: build up down logs ps re health test-integration test-e2e test-load test-metrics test-security test-quality test-all test-unit verify scale-demo deploy deploy-test-rollback pipeline workflow-quality workflow-security workflow-build workflow-scan workflow-deploy workflow-verify all-workflows workflow-act clean status

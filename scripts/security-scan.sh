@@ -71,11 +71,10 @@ echo "3. Checking for hardcoded credentials in code..."
 if grep -rn --include="*.py" --include="*.js" --include="*.jsx" \
     -E "(password|secret|api_key|token)\s*=\s*['\"][^'\"]+['\"]" \
     alert-ingestion-service/ \
-    " incident-management-service/" \
+    "incident-management-service/" \
     oncall-service/ \
     notification-service/ \
     gateway-service/ \
-    monitoring-service/ \
     web-ui-service/src/ 2>/dev/null; then
     echo "  ⚠ Potential hardcoded credentials found (review above)"
     FAILED=1

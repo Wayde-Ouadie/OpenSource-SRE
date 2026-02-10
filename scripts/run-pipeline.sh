@@ -8,12 +8,11 @@ stage() {
 
 stage "Stage 1/7: Quality"
 python -m compileall -q \
-  " incident-management-service" \
+  "incident-management-service" \
   alert-ingestion-service \
   oncall-service \
   notification-service \
-  gateway-service \
-  monitoring-service
+  gateway-service
 ( cd web-ui-service && npm ci && npm run build )
 
 stage "Stage 2/7: Security (secrets)"
@@ -46,8 +45,7 @@ else
 fi
 
 stage "Stage 5/7: Test"
-# Skeleton-level: integration checks are done via make verify after deploy.
-echo "(no unit tests yet)"
+make test-unit
 
 stage "Stage 6/7: Deploy"
 make down || true

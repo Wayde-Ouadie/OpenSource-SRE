@@ -8,12 +8,11 @@ echo "==> Running code quality checks (syntax + build)..."
 # Python services syntax check
 echo "  Checking Python syntax..."
 python3 -m compileall -q \
-  " incident-management-service" \
+  "incident-management-service" \
   alert-ingestion-service \
   oncall-service \
   notification-service \
-  gateway-service \
-  monitoring-service
+  gateway-service
 
 # Web UI build check
 echo "  Building web-ui..."

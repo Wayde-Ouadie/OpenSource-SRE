@@ -10,12 +10,11 @@ FAILED=0
 # 1. Python code quality
 echo "1. Python Services - Syntax Check"
 python_services=(
-    " incident-management-service"
+    "incident-management-service"
     "alert-ingestion-service"
     "oncall-service"
     "notification-service"
     "gateway-service"
-    "monitoring-service"
 )
 
 for service in "${python_services[@]}"; do

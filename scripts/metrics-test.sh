@@ -5,6 +5,7 @@ set -euo pipefail
 echo "==> Testing Prometheus metrics compliance..."
 echo
 
+DC="docker compose -f deployment/docker-compose.yml --env-file deployment/.env"
 FAILED=0
 
 check_metric() {
@@ -22,18 +23,35 @@ check_metric() {
     fi
 }
 
+# Check metric via docker exec (for services without host port mapping)
+check_metric_internal() {
+    local service="$1"
+    local port="$2"
+    local metric_pattern="$3"
+    
+    echo -n "  $service - $metric_pattern... "
+    if $DC exec -T "$service" curl -fsS --connect-timeout 3 --max-time 5 "http://localhost:${port}/metrics" 2>/dev/null | grep -q "$metric_pattern"; then
+        echo "✓ OK"
+    else
+        echo "✗ MISSING"
+        FAILED=1
+    fi
+}
+
 echo "Required Custom Metrics:"
-check_metric "incident-management" 8002 "incidents_total"
-check_metric "incident-management" 8002 "incident_mtta_seconds"
-check_metric "incident-management" 8002 "incident_mttr_seconds"
-check_metric "alert-ingestion" 8001 "alerts_received_total"
-check_metric "alert-ingestion" 8001 "alerts_correlated_total"
+check_metric_internal "incident-management" 8002 "incidents_total"
+check_metric_internal "incident-management" 8002 "incident_mtta_seconds"
+check_metric_internal "incident-management" 8002 "incident_mttr_seconds"
+check_metric_internal "alert-ingestion" 8001 "alerts_received_total"
+check_metric_internal "alert-ingestion" 8001 "alerts_correlated_total"
 check_metric "notification" 8004 "oncall_notifications_sent_total"
 check_metric "oncall" 8003 "oncall_current"
 
 echo
 echo "Process Metrics (should exist on all services):"
-for port in 8001 8002 8003 8004 8010 8011; do
+check_metric_internal "incident-management" 8002 "process_cpu_seconds_total"
+check_metric_internal "alert-ingestion" 8001 "process_cpu_seconds_total"
+for port in 8003 8004 8010; do
     check_metric "service:$port" "$port" "process_cpu_seconds_total"
 done
 

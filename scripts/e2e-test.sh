@@ -3,6 +3,8 @@
 echo "==> Running E2E test: Alert → Incident → Acknowledgment → Resolution"
 echo
 
+DC="docker compose -f deployment/docker-compose.yml --env-file deployment/.env"
+
 echo "Step 1: Setting up on-call schedule..."
 SCHEDULE_RESPONSE=$(curl -fsS -X POST http://localhost:8003/api/v1/schedules \
     -H 'Content-Type: application/json' \
@@ -10,8 +12,8 @@ SCHEDULE_RESPONSE=$(curl -fsS -X POST http://localhost:8003/api/v1/schedules \
 echo "  Schedule created: $SCHEDULE_RESPONSE"
 
 echo
-echo "Step 2: Sending test alert..."
-ALERT_RESPONSE=$(curl -fsS -X POST http://localhost:8001/api/v1/alerts \
+echo "Step 2: Sending test alert (via nginx proxy)..."
+ALERT_RESPONSE=$(curl -fsS -X POST http://localhost:8080/api/v1/alerts \
     -H 'Content-Type: application/json' \
     -d '{"service":"e2e-test-service","severity":"critical","message":"E2E test: Critical issue detected","labels":{"environment":"production","test":"e2e"}}')
 echo "  Alert response: $ALERT_RESPONSE"
@@ -26,29 +28,29 @@ fi
 echo "  Incident created: $INCIDENT_ID"
 
 echo
-echo "Step 3: Verifying incident was created..."
+echo "Step 3: Verifying incident was created (via nginx proxy)..."
 sleep 1
-INCIDENT_DETAIL=$(curl -fsS "http://localhost:8002/api/v1/incidents/$INCIDENT_ID")
+INCIDENT_DETAIL=$(curl -fsS "http://localhost:8080/api/v1/incidents/$INCIDENT_ID")
 echo "  Incident details: $INCIDENT_DETAIL"
 
 echo
-echo "Step 4: Acknowledging incident..."
-ACK_RESPONSE=$(curl -fsS -X PATCH "http://localhost:8002/api/v1/incidents/$INCIDENT_ID" \
+echo "Step 4: Acknowledging incident (via nginx proxy)..."
+ACK_RESPONSE=$(curl -fsS -X PATCH "http://localhost:8080/api/v1/incidents/$INCIDENT_ID" \
     -H 'Content-Type: application/json' \
     -d '{"status":"acknowledged"}')
 echo "  Acknowledged: $ACK_RESPONSE"
 
 echo
-echo "Step 5: Resolving incident..."
+echo "Step 5: Resolving incident (via nginx proxy)..."
 sleep 1
-RESOLVE_RESPONSE=$(curl -fsS -X PATCH "http://localhost:8002/api/v1/incidents/$INCIDENT_ID" \
+RESOLVE_RESPONSE=$(curl -fsS -X PATCH "http://localhost:8080/api/v1/incidents/$INCIDENT_ID" \
     -H 'Content-Type: application/json' \
     -d '{"status":"resolved"}')
 echo "  Resolved: $RESOLVE_RESPONSE"
 
 echo
-echo "Step 6: Verifying metrics were recorded..."
-METRICS=$(curl -fsS http://localhost:8002/metrics | grep -E "(incidents_total|incident_mtta|incident_mttr)")
+echo "Step 6: Verifying metrics were recorded (via docker exec)..."
+METRICS=$($DC exec -T incident-management curl -fsS http://localhost:8002/metrics | grep -E "(incidents_total|incident_mtta|incident_mttr)")
 echo "  Metrics:"
 echo "$METRICS"
 
