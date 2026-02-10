@@ -26,6 +26,7 @@ trap cleanup EXIT
 
 docker run -d --rm --name "$CONTAINER_NAME" \
     -p "$HOST_PORT:$PORT" \
+    -e DATABASE_URL="sqlite:///./smoke_test.db" \
     "$TAG"
 
 URL="http://127.0.0.1:${HOST_PORT}${HEALTH_PATH}"
