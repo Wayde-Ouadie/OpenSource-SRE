@@ -384,10 +384,10 @@ jwt-secret
 # Monitoring & Observability
 # =============================================================================
 # Prometheus data
-monitoring-service/prometheus/data/
+monitoring/prometheus/data/
 
 # Grafana data
-monitoring-service/grafana/data/
+monitoring/grafana/data/
 
 # =============================================================================
 # Miscellaneous

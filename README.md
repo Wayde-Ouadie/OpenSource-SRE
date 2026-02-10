@@ -185,6 +185,11 @@ make all-workflows          # Run all workflow tests
 make workflow-act           # Run with 'act' (GitHub Actions locally)
 ```
 
+> **Note:** `make workflow-act` requires [act](https://github.com/nektos/act) to be installed:
+> ```bash
+> curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash
+> ```
+
 Stages:
 1. **Quality** - Code linting and basic checks
 2. **Security** - Secret scanning with GitLeaks
