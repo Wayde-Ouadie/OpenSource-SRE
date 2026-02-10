@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getIncident, updateIncidentStatus } from '../services/api';
+import { getIncident, updateIncidentStatus, addNote } from '../services/api';
 import type { Incident, IncidentStatus } from '../types';
 import {
   timeAgo,
@@ -24,6 +24,9 @@ export default function IncidentDetail() {
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState<IncidentStatus | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [noteContent, setNoteContent] = useState('');
+  const [noteAuthor, setNoteAuthor] = useState('');
+  const [submittingNote, setSubmittingNote] = useState(false);
 
   const fetchIncident = useCallback(async () => {
     if (!id) return;
@@ -218,6 +221,92 @@ export default function IncidentDetail() {
             </li>
           ))}
         </ol>
+      </section>
+
+      {/* Notes */}
+      <section className="bg-surface border border-border rounded-xl p-4 shadow-sm mb-4">
+        <h3 className="text-[0.72rem] uppercase tracking-wide text-text-muted font-semibold pb-2 mb-3 border-b border-border">
+          Notes &amp; Comments
+        </h3>
+
+        {/* Existing notes */}
+        {incident.notes && incident.notes.length > 0 ? (
+          <ul className="list-none p-0 m-0 flex flex-col gap-3 mb-4">
+            {incident.notes.map((note) => (
+              <li
+                key={note.id}
+                className="p-3 bg-bg-subtle rounded-lg border-l-[3px] border-l-accent"
+              >
+                <p className="text-sm text-text-secondary leading-relaxed m-0 whitespace-pre-wrap">
+                  {note.content}
+                </p>
+                <span className="block mt-1.5 text-[0.72rem] text-text-muted">
+                  <strong className="text-text-secondary">{note.author}</strong> ·{' '}
+                  {timeAgo(note.created_at)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-text-muted text-sm mb-4">No notes yet. Be the first to add one.</p>
+        )}
+
+        {/* Add note form */}
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!noteContent.trim() || !noteAuthor.trim()) return;
+            setSubmittingNote(true);
+            try {
+              await addNote(incident.id, noteContent.trim(), noteAuthor.trim());
+              setNoteContent('');
+              setNoteAuthor('');
+              // Refresh incident to get updated notes
+              await fetchIncident();
+            } catch {
+              /* handled gracefully */
+            } finally {
+              setSubmittingNote(false);
+            }
+          }}
+          className="flex flex-col gap-3 pt-3 border-t border-border"
+        >
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-text-muted uppercase tracking-wide">
+              Your Name <span className="text-sev-critical">*</span>
+            </label>
+            <input
+              type="text"
+              value={noteAuthor}
+              onChange={(e) => setNoteAuthor(e.target.value)}
+              placeholder="e.g. Alice Chen"
+              className="w-full bg-bg-subtle border border-border rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
+              required
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-text-muted uppercase tracking-wide">
+              Comment <span className="text-sev-critical">*</span>
+            </label>
+            <textarea
+              value={noteContent}
+              onChange={(e) => setNoteContent(e.target.value)}
+              placeholder="Describe observations, potential causes, or solutions…"
+              rows={3}
+              className="w-full bg-bg-subtle border border-border rounded-lg px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors resize-y"
+              required
+            />
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={!noteContent.trim() || !noteAuthor.trim() || submittingNote}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            >
+              {submittingNote ? 'Posting…' : '💬 Add Note'}
+            </button>
+          </div>
+        </form>
       </section>
     </div>
   );

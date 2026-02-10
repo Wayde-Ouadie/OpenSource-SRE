@@ -137,6 +137,37 @@ export async function updateIncidentStatus(
   }
 }
 
+export async function addNote(
+  incidentId: string,
+  content: string,
+  author: string,
+): Promise<{ id: string; content: string; author: string; created_at: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/incidents/${incidentId}/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, author }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data.note;
+  } catch {
+    // Fallback: add note to mock data locally
+    const note = {
+      id: `NOTE-${Date.now()}`,
+      content,
+      author,
+      created_at: new Date().toISOString(),
+    };
+    const incident = mockIncidents.find((i) => i.id === incidentId);
+    if (incident) {
+      if (!incident.notes) incident.notes = [];
+      incident.notes.push(note);
+    }
+    return note;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // On-Call (live API with mock fallback)
 // ---------------------------------------------------------------------------
