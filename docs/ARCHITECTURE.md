@@ -2,106 +2,92 @@
 
 ## System Overview
 
-```mermaid
-graph TB
-    subgraph "External"
-        USER["👤 User / Browser"]
-    end
-
-    subgraph "Edge Layer"
-        WEBUI["🌐 Web UI<br/>(React + Nginx)<br/>:8080"]
-        GW["🚪 Gateway Service<br/>(FastAPI)<br/>:8010"]
-    end
-
-    subgraph "Core Services"
-        AI["🔔 Alert Ingestion<br/>(FastAPI + PostgreSQL)<br/>:8001"]
-        IM["📋 Incident Management<br/>(FastAPI + PostgreSQL)<br/>:8002"]
-        OC["📞 On-Call Service<br/>(FastAPI, in-memory)<br/>:8003"]
-        NS["📣 Notification Service<br/>(FastAPI)<br/>:8004"]
-    end
-
-    subgraph "Observability Stack"
-        PROM["📈 Prometheus<br/>:9090"]
-        GRAF["📉 Grafana<br/>:3000"]
-        LOKI["📝 Loki"]
-        PROMTAIL["📋 Promtail"]
-        JAEGER["🔍 Jaeger<br/>:16686"]
-    end
-
-    subgraph "Data Layer"
-        PG[("🐘 PostgreSQL<br/>:5432")]
-    end
-
-    USER -->|"HTTP :8080"| WEBUI
-    USER -->|"HTTP :8010"| GW
-    WEBUI -->|"/api/v1/alerts"| AI
-    WEBUI -->|"/api/v1/incidents"| IM
-    WEBUI -->|"/api/v1/oncall/*"| OC
-    GW -->|"proxy"| IM
-
-    AI -->|"Create/correlate<br/>incidents"| IM
-    IM -->|"Lookup on-call"| OC
-    IM -->|"Send notifications"| NS
-
-    AI --> PG
-    IM --> PG
-
-    PROM -->|"scrape /metrics"| AI
-    PROM -->|"scrape /metrics"| IM
-    PROM -->|"scrape /metrics"| OC
-    PROM -->|"scrape /metrics"| NS
-    PROM -->|"scrape /metrics"| GW
-    GRAF -->|"query"| PROM
-    GRAF -->|"query"| LOKI
-    PROMTAIL -->|"push logs"| LOKI
-    AI -.->|"traces"| JAEGER
-    IM -.->|"traces"| JAEGER
-    OC -.->|"traces"| JAEGER
-    NS -.->|"traces"| JAEGER
-
-    classDef edge fill:#4F46E5,stroke:#312E81,color:#fff
-    classDef core fill:#059669,stroke:#064E3B,color:#fff
-    classDef obs fill:#D97706,stroke:#92400E,color:#fff
-    classDef data fill:#2563EB,stroke:#1E3A5F,color:#fff
-    classDef ext fill:#6B7280,stroke:#374151,color:#fff
-
-    class USER ext
-    class WEBUI,GW edge
-    class AI,IM,OC,NS core
-    class PROM,GRAF,LOKI,PROMTAIL,JAEGER obs
-    class PG data
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          DOCKER COMPOSE STACK                          │
+│                                                                        │
+│  ┌──────────┐   ┌──────────────────────────────────────────────────┐   │
+│  │  👤 User  │──▶│  🌐 Web UI (React + Nginx) :8080                │   │
+│  └──────────┘   │    Serves SPA + reverse-proxies /api/* calls     │   │
+│                  └────────┬──────────┬──────────┬──────────────────┘   │
+│                           │          │          │                       │
+│               ┌───────────▼──┐  ┌────▼──────┐  ┌▼────────────┐        │
+│               │ 🔔 Alert     │  │ 📋 Incident│  │ 📞 On-Call  │        │
+│               │  Ingestion   │  │  Management│  │  Service    │        │
+│               │  :8001       │  │  :8002     │  │  :8003      │        │
+│               └──┬───────┬───┘  └──┬──┬──┬──┘  └─────────────┘        │
+│                  │       │         │  │  │                              │
+│                  │       └────────▶┘  │  │     ┌──────────────┐        │
+│                  │    create/correlate │  └────▶│ 📣 Notify    │        │
+│                  │                    │        │  Service      │        │
+│                  │                    │        │  :8004        │        │
+│               ┌──▼────────────────────▼──┐    └──────────────┘        │
+│               │  🐘 PostgreSQL :5432     │                             │
+│               │  (alerts + incidents)    │                             │
+│               └──────────────────────────┘                             │
+│                                                                        │
+│  ┌── Observability ──────────────────────────────────────────────────┐ │
+│  │  Prometheus :9090  ◀── scrapes /metrics from all services        │ │
+│  │  Grafana    :3000  ◀── queries Prometheus + Loki                 │ │
+│  │  Loki + Promtail   ◀── collects container logs                   │ │
+│  │  Jaeger     :16686 ◀── receives OpenTelemetry traces             │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+│                                                                        │
+│  🚪 Gateway :8010 — optional API proxy to incident-management         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Request Flow
+## Service Communication
+
+```mermaid
+graph LR
+    AI[Alert Ingestion<br/>:8001] -->|POST /api/v1/incidents| IM[Incident Management<br/>:8002]
+    IM -->|GET /api/v1/oncall/current| OC[On-Call Service<br/>:8003]
+    IM -->|POST /api/v1/notify| NS[Notification Service<br/>:8004]
+    OC -->|POST /api/v1/notify<br/>escalations| NS
+    AI --> DB[(PostgreSQL)]
+    IM --> DB
+    GW[Gateway<br/>:8010] -->|proxy| IM
+
+    classDef svc fill:#059669,stroke:#064E3B,color:#fff
+    classDef db fill:#2563EB,stroke:#1E3A5F,color:#fff
+    class AI,IM,OC,NS,GW svc
+    class DB db
+```
+
+## Request Flow — Alert to Incident
 
 ```mermaid
 sequenceDiagram
     actor User
-    participant UI as Web UI (nginx)
+    participant UI as Web UI :8080
     participant AI as Alert Ingestion
+    participant DB as PostgreSQL
     participant IM as Incident Mgmt
     participant OC as On-Call
     participant NS as Notification
-    participant DB as PostgreSQL
 
     User->>UI: POST /api/v1/alerts
-    UI->>AI: proxy → POST /api/v1/alerts
-    AI->>DB: Check existing open incidents (correlation)
+    UI->>AI: reverse proxy
+
+    AI->>DB: Check open incidents (same service + severity + 5min)
+
     alt New incident
-        AI->>DB: INSERT alert + incident
-        AI->>IM: POST /api/v1/incidents (create)
-        IM->>DB: INSERT incident row
-        IM->>OC: GET /api/v1/oncall/current
-        OC-->>IM: {engineer, team}
+        AI->>DB: INSERT alert
+        AI->>IM: POST /api/v1/incidents
+        IM->>DB: INSERT incident
+        IM->>OC: GET /api/v1/oncall/current?team=X
+        OC-->>IM: {engineer, role}
         IM->>NS: POST /api/v1/notify
         NS-->>IM: 202 Accepted
-        IM-->>AI: {incident_id, action: "created"}
+        IM-->>AI: {incident_id, action: created}
     else Correlated to existing
-        AI->>DB: INSERT alert, UPDATE incident
-        AI-->>User: {incident_id, action: "correlated"}
+        AI->>DB: INSERT alert, link to incident
+        AI-->>UI: {incident_id, action: correlated}
     end
+
     AI-->>UI: JSON response
-    UI-->>User: Display result
+    UI-->>User: display result
 ```
 
 ## Deployment Topology
@@ -120,6 +106,21 @@ sequenceDiagram
 | Loki                  | —         | 3100          | ✗        | Log aggregation              |
 | Promtail              | —         | 9080          | ✗        | Log shipper                  |
 | Jaeger                | 16686     | 16686         | ✗        | Distributed tracing          |
+
+## Observability
+
+Every Python service exposes:
+- **`/health`** — liveness probe (used by Docker healthchecks)
+- **`/metrics`** — Prometheus-format metrics (`prometheus_client`)
+- **OpenTelemetry traces** — auto-instrumented via `opentelemetry-instrumentation-fastapi`
+
+Prometheus scrapes all services every 5s. Grafana has 3 auto-provisioned dashboards:
+
+| Dashboard | Purpose |
+|---|---|
+| **Live Incident Overview** | Open incidents by severity, MTTA/MTTR gauges, alert timeline |
+| **SRE Performance Metrics** | MTTA/MTTR trends (p50/p95), incident volume, escalations |
+| **System Health** | CPU, memory, uptime, file descriptors, HTTP error rates |
 
 ## Docker Secrets
 
