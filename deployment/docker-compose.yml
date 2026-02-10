@@ -1,5 +1,11 @@
 # version: "3.8"
 
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  resend_api_key:
+    file: ./secrets/resend_api_key.txt
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -7,7 +13,9 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-incident_management}
       POSTGRES_USER: ${POSTGRES_USER:-opensource}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opensource}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -35,11 +43,14 @@ services:
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://opensource:opensource@postgres:5432/incident_management}
+      DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
       ONCALL_BASE_URL: ${ONCALL_BASE_URL:-http://oncall-service:8003}
       NOTIFICATION_BASE_URL: ${NOTIFICATION_BASE_URL:-http://notification-service:8004}
       TZ: ${TZ:-UTC}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       OTEL_SERVICE_NAME: incident-management-service
+    secrets:
+      - postgres_password
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,10 +79,13 @@ services:
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://opensource:opensource@postgres:5432/incident_management}
+      DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
       INCIDENT_MGMT_BASE_URL: ${INCIDENT_MGMT_BASE_URL:-http://incident-management:8002}
       TZ: ${TZ:-UTC}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       OTEL_SERVICE_NAME: alert-ingestion-service
+    secrets:
+      - postgres_password
     depends_on:
       postgres:
         condition: service_healthy
@@ -127,10 +141,12 @@ services:
       context: ../notification-service
       dockerfile: Dockerfile
     environment:
-      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_API_KEY_FILE: /run/secrets/resend_api_key
       RESEND_FROM: ${RESEND_FROM:-noreply@transcendence.games}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       OTEL_SERVICE_NAME: notification-service
+    secrets:
+      - resend_api_key
     ports:
       - "${NOTIFICATION_PORT:-8004}:8004"
     healthcheck:

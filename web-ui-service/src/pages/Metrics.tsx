@@ -5,7 +5,6 @@ import {
 } from 'recharts';
 import { getMetrics } from '../services/api';
 import type { MetricsData } from '../types';
-import './Metrics.css';
 
 export default function Metrics() {
   const [data, setData] = useState<MetricsData | null>(null);
@@ -15,70 +14,120 @@ export default function Metrics() {
     getMetrics().then(setData).finally(() => setLoading(false));
   }, []);
 
-  if (loading || !data) return <div className="loading">Loading…</div>;
+  if (loading || !data)
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-text-muted text-sm">
+        <span className="w-4.5 h-4.5 border-2 border-border border-t-accent rounded-full animate-spin" />
+        Loading…
+      </div>
+    );
+
+  const tooltipStyle = {
+    background: 'var(--color-surface)',
+    border: '1px solid var(--color-border)',
+    borderRadius: 8,
+    fontSize: 13,
+  };
 
   return (
-    <div className="metrics-page">
-      <h1>SRE Metrics</h1>
-      <p className="metrics-subtitle">Response times, volume trends, and service breakdown</p>
+    <div>
+      <h1 className="mb-1">SRE Metrics</h1>
+      <p className="text-text-muted text-sm mb-6">Response times, volume trends, and service breakdown</p>
 
-      <div className="chart-grid">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* MTTA trend */}
-        <div className="chart-card">
-          <h3>MTTA Trend (minutes)</h3>
+        <ChartCard title="MTTA Trend (minutes)">
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={data.mttaTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--text-muted)" />
-              <YAxis tick={{ fontSize: 11 }} stroke="var(--text-muted)" />
-              <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }} />
-              <Line type="monotone" dataKey="value" stroke="var(--color-acknowledged)" strokeWidth={2} dot={{ r: 3, fill: 'var(--color-acknowledged)' }} activeDot={{ r: 5 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--color-text-muted)" />
+              <YAxis tick={{ fontSize: 11 }} stroke="var(--color-text-muted)" />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Line
+                type="monotone"
+                dataKey="value"
+                stroke="var(--color-status-ack)"
+                strokeWidth={2}
+                dot={{ r: 3, fill: 'var(--color-status-ack)' }}
+                activeDot={{ r: 5 }}
+              />
             </LineChart>
           </ResponsiveContainer>
-        </div>
+        </ChartCard>
 
         {/* MTTR trend */}
-        <div className="chart-card">
-          <h3>MTTR Trend (minutes)</h3>
+        <ChartCard title="MTTR Trend (minutes)">
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={data.mttrTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--text-muted)" />
-              <YAxis tick={{ fontSize: 11 }} stroke="var(--text-muted)" />
-              <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }} />
-              <Line type="monotone" dataKey="value" stroke="var(--color-resolved)" strokeWidth={2} dot={{ r: 3, fill: 'var(--color-resolved)' }} activeDot={{ r: 5 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--color-text-muted)" />
+              <YAxis tick={{ fontSize: 11 }} stroke="var(--color-text-muted)" />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Line
+                type="monotone"
+                dataKey="value"
+                stroke="var(--color-status-resolved)"
+                strokeWidth={2}
+                dot={{ r: 3, fill: 'var(--color-status-resolved)' }}
+                activeDot={{ r: 5 }}
+              />
             </LineChart>
           </ResponsiveContainer>
-        </div>
+        </ChartCard>
 
         {/* Incidents per service */}
-        <div className="chart-card">
-          <h3>Incidents per Service</h3>
+        <ChartCard title="Incidents per Service">
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={data.incidentsPerService} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--text-muted)" />
-              <YAxis dataKey="service" type="category" tick={{ fontSize: 11 }} width={120} stroke="var(--text-muted)" />
-              <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }} cursor={{ fill: 'var(--accent-subtle)' }} />
-              <Bar dataKey="count" fill="var(--accent)" radius={[0, 4, 4, 0]} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+              <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--color-text-muted)" />
+              <YAxis
+                dataKey="service"
+                type="category"
+                tick={{ fontSize: 11 }}
+                width={120}
+                stroke="var(--color-text-muted)"
+              />
+              <Tooltip
+                contentStyle={tooltipStyle}
+                cursor={{ fill: 'var(--color-accent-subtle)' }}
+              />
+              <Bar dataKey="count" fill="var(--color-accent)" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </ChartCard>
 
         {/* Incident volume over time */}
-        <div className="chart-card">
-          <h3>Incident Volume Over Time</h3>
+        <ChartCard title="Incident Volume Over Time">
           <ResponsiveContainer width="100%" height={250}>
             <AreaChart data={data.incidentVolume}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--text-muted)" />
-              <YAxis tick={{ fontSize: 11 }} stroke="var(--text-muted)" />
-              <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }} />
-              <Area type="monotone" dataKey="count" stroke="var(--color-open)" fill="var(--color-open)" fillOpacity={0.1} strokeWidth={2} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--color-text-muted)" />
+              <YAxis tick={{ fontSize: 11 }} stroke="var(--color-text-muted)" />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Area
+                type="monotone"
+                dataKey="count"
+                stroke="var(--color-status-open)"
+                fill="var(--color-status-open)"
+                fillOpacity={0.1}
+                strokeWidth={2}
+              />
             </AreaChart>
           </ResponsiveContainer>
-        </div>
+        </ChartCard>
       </div>
+    </div>
+  );
+}
+
+function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-surface border border-border rounded-xl p-5 shadow-sm hover:shadow-md hover:border-border-light transition-all">
+      <h3 className="text-[0.72rem] uppercase tracking-wide text-text-muted font-semibold mb-4">
+        {title}
+      </h3>
+      {children}
     </div>
   );
 }

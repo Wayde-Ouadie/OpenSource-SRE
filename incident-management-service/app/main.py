@@ -20,10 +20,31 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql+psycopg2://opensource:opensource@postgres:5432/incident_management",
-)
+def _read_secret(env_var: str, default: str = "") -> str:
+    """Read a value from env, falling back to a Docker secret file (<env_var>_FILE)."""
+    file_path = os.environ.get(f"{env_var}_FILE")
+    if file_path:
+        try:
+            return open(file_path).read().strip()
+        except OSError:
+            pass
+    return os.environ.get(env_var, default)
+
+
+def _build_database_url() -> str:
+    url = os.environ.get(
+        "DATABASE_URL",
+        "postgresql+psycopg2://opensource:opensource@postgres:5432/incident_management",
+    )
+    secret_pw = _read_secret("DATABASE_PASSWORD")
+    if secret_pw:
+        # Replace the password segment in the URL  (user:password@host)
+        import re
+        url = re.sub(r"(://[^:]+:)[^@]+(@)", rf"\g<1>{secret_pw}\2", url)
+    return url
+
+
+DATABASE_URL = _build_database_url()
 ONCALL_BASE_URL = os.environ.get("ONCALL_BASE_URL", "http://oncall-service:8003")
 NOTIFICATION_BASE_URL = os.environ.get("NOTIFICATION_BASE_URL", "http://notification-service:8004")
 

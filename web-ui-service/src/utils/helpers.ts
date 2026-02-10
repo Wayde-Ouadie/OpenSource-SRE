@@ -5,11 +5,36 @@ export function timeAgo(iso: string): string {
   return formatDistanceToNow(new Date(iso), { addSuffix: true });
 }
 
-export const statusColors: Record<IncidentStatus, string> = {
-  open: 'var(--color-open)',
-  acknowledged: 'var(--color-acknowledged)',
-  in_progress: 'var(--color-in-progress)',
-  resolved: 'var(--color-resolved)',
+/** Tailwind bg classes for status badges */
+export const statusBgClass: Record<IncidentStatus, string> = {
+  open: 'bg-status-open',
+  acknowledged: 'bg-status-ack',
+  in_progress: 'bg-status-ip',
+  resolved: 'bg-status-resolved',
+};
+
+/** Tailwind bg + text classes for severity badges */
+export const severityBadgeClass: Record<Severity, string> = {
+  critical: 'bg-sev-critical-bg text-sev-critical',
+  high: 'bg-sev-high-bg text-sev-high',
+  medium: 'bg-sev-medium-bg text-sev-medium',
+  low: 'bg-sev-low-bg text-sev-low',
+};
+
+/** Tailwind bg color for severity dots/bars */
+export const severityDotClass: Record<Severity, string> = {
+  critical: 'bg-sev-critical',
+  high: 'bg-sev-high',
+  medium: 'bg-sev-medium',
+  low: 'bg-sev-low',
+};
+
+/** Raw hex for recharts / inline usage */
+export const statusColorHex: Record<IncidentStatus, string> = {
+  open: '#ef4444',
+  acknowledged: '#f59e0b',
+  in_progress: '#3b82f6',
+  resolved: '#22c55e',
 };
 
 export const severityOrder: Record<Severity, number> = {

@@ -12,6 +12,18 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
 
 VALID_CHANNELS = {"mock", "email", "webhook", "slack"}
 
+
+def _read_secret(env_var: str, default: str = "") -> str:
+    """Read a value from env, falling back to a Docker secret file (<env_var>_FILE)."""
+    file_path = os.environ.get(f"{env_var}_FILE")
+    if file_path:
+        try:
+            return open(file_path).read().strip()
+        except OSError:
+            pass
+    return os.environ.get(env_var, default)
+
+
 # Setup structured logging
 logging.basicConfig(
     level=logging.INFO,
@@ -90,7 +102,7 @@ async def notify(payload: NotifyIn, request: Request):
     try:
         if channel == "email":
             # Real email sending via Resend API (https://resend.com/docs/api-reference)
-            api_key = os.environ.get("RESEND_API_KEY", "")
+            api_key = _read_secret("RESEND_API_KEY")
             sender = os.environ.get("RESEND_FROM", "noreply@transcendence.games")
 
             if not api_key or "PLACEHOLDER" in api_key.upper():
