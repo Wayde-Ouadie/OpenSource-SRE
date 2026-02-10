@@ -2,14 +2,12 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from app.main import app
+
 
 @pytest.fixture()
 def client():
-    import importlib
-
-    import app.main as mod
-    importlib.reload(mod)
-    return TestClient(mod.app)
+    return TestClient(app)
 
 
 class TestHealthEndpoint:
@@ -24,8 +22,8 @@ class TestMetricsEndpoint:
     def test_metrics(self, client):
         r = client.get("/metrics")
         assert r.status_code == 200
-        # Should contain prometheus process metrics
-        assert "process" in r.text or "python" in r.text
+        # Should contain gateway-specific metrics
+        assert "gateway_request" in r.text
 
 
 class TestApiHealth:
