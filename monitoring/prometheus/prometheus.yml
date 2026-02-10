@@ -12,13 +12,17 @@ scrape_configs:
 
   - job_name: alert-ingestion
     metrics_path: /metrics
-    static_configs:
-      - targets: ["alert-ingestion:8001"]
+    dns_sd_configs:
+      - names: ["alert-ingestion"]
+        type: A
+        port: 8001
 
   - job_name: incident-management
     metrics_path: /metrics
-    static_configs:
-      - targets: ["incident-management:8002"]
+    dns_sd_configs:
+      - names: ["incident-management"]
+        type: A
+        port: 8002
 
   - job_name: oncall
     metrics_path: /metrics

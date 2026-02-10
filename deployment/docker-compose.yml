@@ -37,12 +37,12 @@ services:
 
   incident-management:
     image: ims/incident-management:local
-    container_name: incident-management
+    # container_name removed to allow scaling (docker compose up --scale incident-management=N)
     build:
       context: ../incident-management-service
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://opensource:opensource@postgres:5432/incident_management}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://opensource:placeholder@postgres:5432/incident_management}
       DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
       ONCALL_BASE_URL: ${ONCALL_BASE_URL:-http://oncall-service:8003}
       NOTIFICATION_BASE_URL: ${NOTIFICATION_BASE_URL:-http://notification-service:8004}
@@ -54,8 +54,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "${INCIDENT_MGMT_PORT:-8002}:8002"
+    # No fixed host port — access via gateway (:8010) to allow scaling
+    expose:
+      - "8002"
     healthcheck:
       test: [ "CMD-SHELL", "curl -fsS http://localhost:8002/health || exit 1" ]
       interval: 10s
@@ -73,12 +74,12 @@ services:
 
   alert-ingestion:
     image: ims/alert-ingestion:local
-    container_name: alert-ingestion
+    # container_name removed to allow scaling
     build:
       context: ../alert-ingestion-service
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://opensource:opensource@postgres:5432/incident_management}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://opensource:placeholder@postgres:5432/incident_management}
       DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
       INCIDENT_MGMT_BASE_URL: ${INCIDENT_MGMT_BASE_URL:-http://incident-management:8002}
       TZ: ${TZ:-UTC}
@@ -89,8 +90,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "${ALERT_INGESTION_PORT:-8001}:8001"
+    expose:
+      - "8001"
     healthcheck:
       test: [ "CMD-SHELL", "curl -fsS http://localhost:8001/health || exit 1" ]
       interval: 10s
@@ -218,29 +219,6 @@ services:
         reservations:
           cpus: "0.10"
           memory: 64M
-    networks: [ incident-platform ]
-
-  monitoring:
-    image: ims/monitoring:local
-    container_name: monitoring
-    build:
-      context: ../monitoring-service
-      dockerfile: Dockerfile
-    ports:
-      - "${MONITORING_PORT:-8011}:8000"
-    healthcheck:
-      test: [ "CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1" ]
-      interval: 10s
-      timeout: 3s
-      retries: 20
-    deploy:
-      resources:
-        limits:
-          cpus: "0.25"
-          memory: 128M
-        reservations:
-          cpus: "0.05"
-          memory: 32M
     networks: [ incident-platform ]
 
   # ---------- Observability Stack ----------
