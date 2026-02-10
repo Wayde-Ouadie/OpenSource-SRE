@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { getIncidents } from '../services/api';
 import type { Incident, Severity } from '../types';
+import AddIncidentModal from '../components/AddIncidentModal';
 import {
   timeAgo,
   statusBgClass,
@@ -19,6 +20,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>('severity');
   const [sortAsc, setSortAsc] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -99,7 +101,15 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 className="mb-1">Dashboard</h1>
+      <div className="flex items-center justify-between mb-1">
+        <h1>Dashboard</h1>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-accent hover:bg-accent-hover transition-colors shadow-sm cursor-pointer"
+        >
+          <span className="text-base leading-none">+</span> Add Incident
+        </button>
+      </div>
       <p className="text-text-muted text-sm mb-6">Real-time incident overview</p>
 
       {/* ── Stats ── */}
@@ -297,6 +307,11 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+      <AddIncidentModal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onCreated={fetchData}
+      />
     </div>
   );
 }

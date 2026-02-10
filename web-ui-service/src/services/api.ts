@@ -1,4 +1,4 @@
-import type { Incident, IncidentStatus, OnCallEngineer, EscalationPolicy, MetricsData } from '../types';
+import type { Incident, IncidentStatus, OnCallEngineer, EscalationPolicy, MetricsData, Severity } from '../types';
 import { mockIncidents, mockOnCall, mockEscalationPolicies, mockMetrics } from '../data/mock';
 
 // Base URL — empty string in production (nginx proxies /api/), configurable for dev
@@ -62,6 +62,52 @@ export async function getIncident(id: string): Promise<Incident | undefined> {
     return mapIncident(raw);
   } catch {
     return structuredClone(mockIncidents.find((i) => i.id === id));
+  }
+}
+
+export interface CreateIncidentPayload {
+  service: string;
+  severity: Severity;
+  title: string;
+  description: string;
+  assigned_to: string;
+}
+
+export async function createIncident(payload: CreateIncidentPayload): Promise<Incident> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/incidents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const raw = await res.json();
+    return mapIncident(raw);
+  } catch {
+    // Fallback: create a mock incident locally
+    const now = new Date().toISOString();
+    const newIncident: Incident = {
+      id: `INC-${String(mockIncidents.length + 1).padStart(3, '0')}`,
+      service: payload.service,
+      severity: payload.severity,
+      status: 'open',
+      title: payload.title,
+      description: payload.description,
+      assignedTo: payload.assigned_to,
+      createdAt: now,
+      alerts: [],
+      timeline: [
+        {
+          id: `TL-${Date.now()}`,
+          type: 'created',
+          message: `Incident manually created with severity '${payload.severity}'`,
+          timestamp: now,
+          actor: payload.assigned_to,
+        },
+      ],
+    };
+    mockIncidents.unshift(newIncident);
+    return structuredClone(newIncident);
   }
 }
 
