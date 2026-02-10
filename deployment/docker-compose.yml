@@ -227,8 +227,8 @@ services:
     image: prom/prometheus:v2.52.0
     container_name: prometheus
     volumes:
-      - ../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ../monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - ../monitoring-service/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring-service/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
       - prometheus_data:/prometheus
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
@@ -256,8 +256,8 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ../monitoring-service/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring-service/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "${GRAFANA_PORT:-3000}:3000"
     depends_on:
@@ -282,7 +282,7 @@ services:
     image: grafana/loki:3.0.0
     container_name: loki
     volumes:
-      - ../monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - ../monitoring-service/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
       - loki_data:/loki
     command: -config.file=/etc/loki/local-config.yaml
     ports:
@@ -306,7 +306,7 @@ services:
     image: grafana/promtail:3.0.0
     container_name: promtail
     volumes:
-      - ../monitoring/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - ../monitoring-service/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command: -config.file=/etc/promtail/config.yml
     depends_on:

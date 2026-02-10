@@ -234,7 +234,7 @@ Entire `common/` directory deleted — no services imported from it.
 | Requirement | Status | Notes |
 |---|---|---|
 | GitHub repository | ✅ | `Wayde-Ouadie/OpenSource` on `devops` branch |
-| All source code | ✅ | 6 services + deployment + monitoring + scripts |
+| All source code | ✅ | 6 services + deployment + monitoring-service + scripts |
 | `docker-compose.yml` | ✅ | Complete |
 | Dockerfiles for each service | ✅ | 6 Dockerfiles |
 | CI/CD pipeline config | ✅ | `scripts/run-pipeline.sh` + `.github/workflows/pipeline.yml` |
