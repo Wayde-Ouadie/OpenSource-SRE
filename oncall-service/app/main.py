@@ -146,6 +146,10 @@ def _current_from_schedule(team: str) -> dict[str, Any]:
         primary = schedule.primary
         secondary = schedule.secondary or []
 
+    # SQLite returns naive datetimes; ensure start is timezone-aware.
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=UTC)
+
     now = datetime.now(UTC)
     seconds = max(0, (now - start).total_seconds())
     period = 86400 if rotation == "daily" else 7 * 86400
