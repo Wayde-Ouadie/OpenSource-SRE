@@ -1,236 +1,379 @@
-# OpenSource Incident & On-Call Platform (Local Edition)
+# OpenSource Incident & On-Call Platform
 
-[![Health](https://img.shields.io/badge/health-passing-brightgreen)]()
-[![Services](https://img.shields.io/badge/services-8-blue)]()
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115.0-009688)]()
+[![Pipeline](https://img.shields.io/badge/CI%2FCD-7--stage-blue)]()
+[![Services](https://img.shields.io/badge/services-6%20%2B%20infra-brightgreen)]()
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB)]()
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688)]()
 
-Production-ready incident management and on-call platform built with microservices architecture, full observability, and DevOps best practices.
+Production-ready incident management and on-call platform — alert ingestion, correlation, on-call scheduling, escalation, notifications, and SRE dashboards. Everything runs locally via Docker Compose.
 
-> 📐 **[Architecture Diagram & Request Flow →](docs/architecture.md)**
+---
 
-## 🚀 Quick Start
+## Quick Start 
 
 ```bash
-# Start the entire stack
-make up
-
-# Or rebuild and restart everything
-make re
-
-# Check health
-make health
-
-# Run all tests
-make test-all
-
-# View logs
-make logs
+mkdir -p deployment/secrets                   # 1. Create secrets dir
+echo "supersecret" > deployment/secrets/postgres_password.txt && \
+echo "PLACEHOLDER" > deployment/secrets/resend_api_key.txt  # 2. Set secrets
+make re                                       # 3. Build & start everything
+make health                                   # 4. Verify all services are healthy
 ```
 
 **Access Points:**
-- 🌐 Web UI: http://localhost:8080
-- 📊 Grafana: http://localhost:3000 (admin/admin)
-- 📈 Prometheus: http://localhost:9090
-- 📚 API Docs: http://localhost:8002/docs (and other services)
 
-## 📋 Architecture
+| Service | URL |
+|---------|-----|
+| Web UI | http://localhost:8080 |
+| Grafana | http://localhost:3000 (admin/admin) |
+| Prometheus | http://localhost:9090 |
+| Jaeger (tracing) | http://localhost:16686 |
+| On-Call API docs | http://localhost:8003/docs |
+| Notification API docs | http://localhost:8004/docs |
+| Gateway API docs | http://localhost:8010/docs |
 
-6 microservices + monitoring stack:
+---
+
+## Architecture
 
 ```
-Services:
-├── alert-ingestion (8001)      - Receives and correlates alerts
-├── incident-management (8002)  - Core incident lifecycle management
-├── oncall-service (8003)       - On-call scheduling and escalation
-├── notification-service (8004) - Multi-channel notifications
-├── gateway (8010)              - API gateway
-└── web-ui (8080)               - React frontend
-
-Infrastructure:
-├── postgres (5432)             - PostgreSQL database
-├── prometheus (9090)           - Metrics collection
-└── grafana (3000)              - Dashboards and visualization
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          DOCKER COMPOSE STACK                          │
+│                                                                        │
+│  ┌──────────┐   ┌──────────────────────────────────────────────────┐   │
+│  │  👤 User  │──▶│  🌐 Web UI (React + Nginx) :8080                │   │
+│  └──────────┘   │    Serves SPA + reverse-proxies /api/* calls     │   │
+│                  └────────┬──────────┬──────────┬──────────────────┘   │
+│                           │          │          │                       │
+│               ┌───────────▼──┐  ┌────▼──────┐  ┌▼────────────┐        │
+│               │ 🔔 Alert     │  │ 📋 Incident│  │ 📞 On-Call  │        │
+│               │  Ingestion   │  │  Management│  │  Service    │        │
+│               │  :8001       │  │  :8002     │  │  :8003      │        │
+│               └──┬───────┬───┘  └──┬──┬──┬──┘  └─────────────┘        │
+│                  │       │         │  │  │                              │
+│                  │       └────────▶┘  │  │     ┌──────────────┐        │
+│                  │    create/correlate │  └────▶│ 📣 Notify    │        │
+│                  │                    │        │  Service      │        │
+│                  │                    │        │  :8004        │        │
+│               ┌──▼────────────────────▼──┐    └──────────────┘        │
+│               │  🐘 PostgreSQL :5432     │                             │
+│               │  (alerts + incidents)    │                             │
+│               └──────────────────────────┘                             │
+│                                                                        │
+│  ┌── Observability ──────────────────────────────────────────────────┐ │
+│  │  Prometheus :9090  ◀── scrapes /metrics from all services        │ │
+│  │  Grafana    :3000  ◀── queries Prometheus + Loki                 │ │
+│  │  Loki + Promtail   ◀── collects container logs                   │ │
+│  │  Jaeger     :16686 ◀── receives OpenTelemetry traces             │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+│                                                                        │
+│  🚪 Gateway :8010 — optional API proxy to incident-management         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 💡 Key Features
+> Full architecture docs with Mermaid diagrams: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
-✅ **Complete Incident Lifecycle** - Create, acknowledge, resolve with MTTA/MTTR tracking  
-✅ **Smart Alert Correlation** - Automatically groups related alerts  
-✅ **On-Call Management** - Weekly/daily rotations with escalation  
-✅ **Multi-Channel Notifications** - Mock notifications with extensible channels  
-✅ **Full Observability** - Prometheus metrics + Grafana dashboards  
-✅ **API Documentation** - Auto-generated Swagger UI for all services  
-✅ **Request Tracing** - X-Request-ID for distributed debugging  
-✅ **Structured Logging** - JSON logs with context  
-✅ **Resilient Communication** - HTTP retry logic and timeouts  
+---
 
-## 🔧 API Examples
+## Key Features
 
-### Create Alert
+- **Complete Incident Lifecycle** — Create, acknowledge, resolve with MTTA/MTTR tracking
+- **Smart Alert Correlation** — Automatically groups related alerts (same service + severity within 5 min)
+- **On-Call Management** — Weekly/daily rotations with primary/secondary engineers
+- **Auto-Escalation** — Unacknowledged incidents escalate to secondary after configurable threshold
+- **Multi-Channel Notifications** — Mock, webhook, email (Resend), Slack channels
+- **Full Observability** — Prometheus metrics, Grafana dashboards, Loki logs, Jaeger traces
+- **Request Tracing** — X-Request-ID propagation across all services
+- **Docker Secrets** — No hardcoded credentials; file-based secret management
+
+---
+
+## Demo Walkthrough
+
+### 1. Set Up On-Call Schedules
+
 ```bash
-curl -X POST http://localhost:8001/api/v1/alerts \
+curl -s -X POST http://localhost:8003/api/v1/schedules \
   -H 'Content-Type: application/json' \
   -d '{
-    "service": "payment-api",
-    "severity": "high",
-    "message": "High error rate detected",
-    "labels": {"environment": "production"}
-  }'
+    "team": "payment-service",
+    "primary": ["alice", "bob"],
+    "secondary": ["charlie"],
+    "rotation": "daily"
+  }' | jq .
 ```
 
-### List Incidents
-```bash
-curl http://localhost:8002/api/v1/incidents?status=open
-```
+### 2. Fire an Alert (triggers the full pipeline)
 
-### Create On-Call Schedule
 ```bash
-curl -X POST http://localhost:8003/api/v1/schedules \
+curl -s -X POST http://localhost:8080/api/v1/alerts \
   -H 'Content-Type: application/json' \
   -d '{
-    "team": "platform-engineering",
-    "primary": ["alice", "bob", "carol"],
-    "secondary": ["dave"],
-    "rotation": "weekly"
-  }'
+    "service": "payment-service",
+    "severity": "critical",
+    "message": "Payment gateway timeout — 95th percentile latency > 5s",
+    "labels": {"environment": "production", "region": "us-east-1"}
+  }' | jq .
 ```
 
-### Get Current On-Call
-```bash
-curl "http://localhost:8003/api/v1/oncall/current?team=platform-engineering"
+**What happens behind the scenes:**
+
+```
+Alert Ingestion          Incident Management        On-Call Service
+  • validates            • creates incident          • looks up "alice"
+  • normalizes           • severity=critical           (current primary)
+  • stores alert         • assigns to alice
+                         • starts timeline     ──▶  Notification Service
+                                                      • logs notification
 ```
 
-## 🧪 Testing
+### 3. Send a duplicate alert (demonstrates correlation)
 
 ```bash
-make health              # Health checks for all services
+curl -s -X POST http://localhost:8080/api/v1/alerts \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "service": "payment-service",
+    "severity": "critical",
+    "message": "Payment gateway — connection refused"
+  }' | jq .
+```
+
+Response will show `"action": "attached_to_existing_incident"` — deduplicated.
+
+### 4. Walk Through the Incident Lifecycle
+
+```bash
+INCIDENT_ID="<paste-incident-id>"
+
+# Acknowledge (records MTTA)
+curl -s -X PATCH "http://localhost:8080/api/v1/incidents/$INCIDENT_ID" \
+  -H 'Content-Type: application/json' -d '{"status": "acknowledged"}' | jq .
+
+# In-progress
+curl -s -X PATCH "http://localhost:8080/api/v1/incidents/$INCIDENT_ID" \
+  -H 'Content-Type: application/json' -d '{"status": "in_progress"}' | jq .
+
+# Add investigation note
+curl -s -X POST "http://localhost:8080/api/v1/incidents/$INCIDENT_ID/notes" \
+  -H 'Content-Type: application/json' \
+  -d '{"content": "Root cause: connection pool exhaustion in PG bouncer", "author": "alice"}' | jq .
+
+# Resolve (records MTTR)
+curl -s -X PATCH "http://localhost:8080/api/v1/incidents/$INCIDENT_ID" \
+  -H 'Content-Type: application/json' -d '{"status": "resolved"}' | jq .
+
+# View full timeline
+curl -s "http://localhost:8080/api/v1/incidents/$INCIDENT_ID" | jq '.timeline'
+```
+
+### 5. Explore the Web UI
+
+Open http://localhost:8080:
+
+| Page | What You See |
+|------|-------------|
+| **Dashboard** | Live incident count, severity breakdown, sortable incident table |
+| **Incident Detail** | Full timeline, notes, status transitions, MTTA/MTTR, assignment |
+| **Metrics** | MTTA/MTTR charts, incident trends, severity distribution |
+| **On-Call** | Current rotation schedules, team cards, primary/secondary |
+
+### 6. Auto-Escalation
+
+The on-call service checks for unacknowledged incidents every 60s. After 5 minutes (configurable via `ESCALATION_THRESHOLD_MINUTES`), it reassigns to secondary and sends an escalation notification.
+
+```bash
+# Watch it happen
+docker compose -f deployment/docker-compose.yml logs -f oncall-service
+```
+
+### 7. Webhook & Email Notifications
+
+```bash
+# Webhook delivery
+curl -s -X POST http://localhost:8004/api/v1/notify \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "incident_id": "test-123",
+    "message": "Critical incident requires attention",
+    "channel": "webhook",
+    "target": "http://host.docker.internal:9999/webhook"
+  }' | jq .
+
+# Email (requires Resend API key in deployment/secrets/resend_api_key.txt)
+curl -s -X POST http://localhost:8004/api/v1/notify \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "incident_id": "email-test",
+    "message": "Production database failover completed",
+    "channel": "email",
+    "target": "you@example.com"
+  }' | jq .
+```
+
+---
+
+## Observability
+
+### Prometheus (http://localhost:9090)
+
+| Query | Description |
+|-------|-------------|
+| `incidents_total` | Incidents by status |
+| `alerts_received_total` | Alerts by severity |
+| `alerts_correlated_total` | New vs. correlated ratio |
+| `incident_mtta_seconds` | Acknowledge time histogram |
+| `incident_mttr_seconds` | Resolution time histogram |
+| `notifications_sent_total` | By channel & status |
+| `escalations_total` | Auto-escalations by team |
+
+### Grafana Dashboards (http://localhost:3000)
+
+| Dashboard | Content |
+|-----------|---------|
+| **Live Incident Overview** | Active incidents, severity breakdown, MTTA/MTTR gauges, alert timeline |
+| **SRE Performance Metrics** | MTTA/MTTR trends (p50/p95), incident volume, on-call load, escalation rate |
+| **System Health** | CPU, memory, HTTP request rate, error rate per service |
+
+### Jaeger (http://localhost:16686)
+
+Follow requests across `alert-ingestion → incident-management → oncall-service → notification-service`.
+
+### Loki (via Grafana Explore)
+
+```logql
+{container=~".*incident-management.*"} |= "incident"
+```
+
+---
+
+## CI/CD Pipeline (7 Stages)
+
+```bash
+make pipeline            # Run full local pipeline
+make all-workflows       # Run all workflow stages
+```
+
+| Stage | Job | What It Does |
+|-------|-----|-------------|
+| 1 | **Quality** | Linting, syntax checks |
+| 2 | **Security** | Secret scanning (GitLeaks) |
+| 3 | **Build** | Docker image building, tagged by commit SHA |
+| 4 | **Scan** | Container vulnerability scanning (Trivy) |
+| 5 | **Test** | Unit tests across all services |
+| 6 | **Deploy** | `docker compose down` + `docker compose up -d` |
+| 7 | **Verify** | Health endpoint polling, integration checks |
+
+Individual stages: `make workflow-quality`, `make workflow-security`, `make workflow-build`, `make workflow-scan`, `make workflow-test`, `make workflow-deploy`, `make workflow-verify`.
+
+---
+
+## Horizontal Scaling
+
+```bash
+make scale-demo REPLICAS=3                              # Scale incident-management
+make scale-demo REPLICAS=3 SERVICE=alert-ingestion      # Scale alert-ingestion
+```
+
+Scales up, verifies health, demonstrates DNS round-robin load distribution, then scales back down. Prometheus auto-discovers new replicas via `dns_sd_configs`.
+
+---
+
+## Automated Rollback
+
+```bash
+make deploy-test-rollback SERVICE=incident-management   # Simulate bad deploy + auto-rollback
+make deploy SERVICE=incident-management                  # Normal deploy
+```
+
+Tags current image as `:rollback`, deploys a broken build, detects health check failure, automatically restores the working image.
+
+---
+
+## Testing
+
+```bash
+make health              # Smoke tests (health checks)
 make test-integration    # API integration tests
 make test-e2e            # End-to-end workflow tests
 make test-metrics        # Prometheus metrics validation
+make test-load           # Load testing
 make test-all            # Run all tests
 ```
 
-## 📊 Monitoring & Metrics
+---
 
-### Grafana Dashboards
-1. **Live Incident Overview** (http://localhost:3000)
-   - Open incidents by severity
-   - MTTA/MTTR gauges
-   - Incident timeline
-   - Top noisy services
-
-2. **SRE Performance Metrics**
-   - MTTA/MTTR trends
-   - Incident volume by service
-   - Acknowledgment time distribution
-
-### Custom Metrics
-All services expose `/metrics` endpoints:
-- `incidents_total{status}` - Incident counter by status
-- `incident_mtta_seconds` - Time to acknowledge (histogram)
-- `incident_mttr_seconds` - Time to resolve (histogram)
-- `alerts_received_total{severity}` - Alert counter
-- `oncall_notifications_sent_total{channel}` - Notification counter
-
-## 🏗️ Tech Stack
-
-- **Framework**: FastAPI 0.115.0
-- **Database**: PostgreSQL 16
-- **Monitoring**: Prometheus + Grafana
-- **Orchestration**: Docker Compose
-- **Language**: Python 3.12
-- **ORM**: SQLAlchemy 2.0
-
-## 📚 Documentation
-
-- [IMPROVEMENTS.md](IMPROVEMENTS.md) - Detailed list of professional enhancements
-- API Documentation: Visit `/docs` on any service port
-- Hackathon Spec: See `scripts/hackathon_spec.txt`
-
-## 🛠️ Development
+## API Quick Reference
 
 ```bash
-# Rebuild specific service
-docker compose -f deployment/docker-compose.yml build incident-management
+# Alerts
+POST   /api/v1/alerts                      # Ingest alert (auto-creates/correlates incident)
+GET    /api/v1/alerts/{id}                  # Get alert by ID
 
-# Restart specific service
-docker compose -f deployment/docker-compose.yml restart incident-management
+# Incidents
+GET    /api/v1/incidents                    # List (filter: ?status=open&service=x&severity=y)
+GET    /api/v1/incidents/{id}               # Detail (timeline, notes, MTTA/MTTR)
+GET    /api/v1/incidents/{id}/metrics       # MTTA/MTTR for one incident
+PATCH  /api/v1/incidents/{id}               # Update status / assignment
+POST   /api/v1/incidents/{id}/notes         # Add a note
 
-# Shell into container
-docker exec -it incident-management bash
+# On-Call
+GET    /api/v1/schedules                    # List all schedules
+POST   /api/v1/schedules                    # Create/update schedule
+GET    /api/v1/oncall/current?team=x        # Current on-call for team
+POST   /api/v1/escalate                     # Manual escalation
 
-# View service logs
-docker logs -f incident-management
-
-# Clean everything
-make clean
+# Notifications
+POST   /api/v1/notify                       # Send (channels: mock, email, webhook, slack)
 ```
 
-## 🔐 Environment Variables
+---
 
-Key configurations (see `deployment/.env`):
+## Tech Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Services | Python 3.12, FastAPI, SQLAlchemy 2.0 |
+| Frontend | React, TypeScript, Vite |
+| Database | PostgreSQL 16 |
+| Monitoring | Prometheus, Grafana, Loki, Promtail |
+| Tracing | Jaeger, OpenTelemetry |
+| Orchestration | Docker Compose |
+| CI/CD | GitHub Actions + local shell scripts |
+| Security | GitLeaks, Trivy |
+
+---
+
+## Development
+
 ```bash
-DATABASE_URL=postgresql+psycopg2://opensource:opensource@postgres:5432/incident_management
-INCIDENT_MGMT_BASE_URL=http://incident-management:8002
-ONCALL_BASE_URL=http://oncall-service:8003
-NOTIFICATION_BASE_URL=http://notification-service:8004
+make build                          # Build all images
+make up                             # Start stack
+make down                           # Stop stack
+make re                             # Full rebuild and restart
+make logs                           # Follow all logs
+make status                         # Service status + metrics check
+make clean                          # Remove everything (images, volumes)
 ```
 
-## 📝 CI/CD Pipeline
+---
 
-7-stage automated pipeline:
-```bash
-make pipeline                # Run local CI/CD pipeline
-make all-workflows          # Run all workflow tests
-make workflow-act           # Run with 'act' (GitHub Actions locally)
-```
+## Documentation
 
-> **Note:** `make workflow-act` requires [act](https://github.com/nektos/act) to be installed:
-> ```bash
-> curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash
-> ```
+- [Architecture Diagram & Request Flow](docs/ARCHITECTURE.md)
+- [Improvements & Enhancements](docs/IMPROVEMENTS.md)
+- Hackathon Spec: `scripts/hackathon_spec.txt`
+- API Documentation: `/docs` on each service port
 
-Stages:
-1. **Quality** - Code linting and basic checks
-2. **Security** - Secret scanning with GitLeaks
-3. **Build** - Docker image building
-4. **Scan** - Container vulnerability scanning (Trivy)
-5. **Test** - Integration and E2E tests
-6. **Deploy** - Stack deployment
-7. **Verify** - Post-deployment verification
+---
 
-## 🎯 Project Status
-
-**Current State**: ✅ Professional skeleton with health endpoints  
-**What Works**:
-- All services running and healthy
-- Database connectivity
-- Service-to-service communication
-- Prometheus metrics collection
-- Grafana dashboards
-- API documentation
-- Request tracing
-- Structured logging
-
-**Next Phase**: Extend with full business logic (incident workflows, attachment management, etc.)
-
-## 📄 License
-
-See [LICENSE](LICENSE) file.
-
-## 👥 Team
+## Team
 
 | Name | Role |
-|---|---|
+|------|------|
 | **Abderrahmane Riyad** | Frontend Developer |
 | **Yasser Rafai** | Backend Developer |
 | **Ouadie El Fengour** | DevOps Engineer / Backend Developer |
 
-## 🤝 Contributing
-
-Built for OpenSource Days Event - Hackathon 2026
-
 ---
 
-**Status**: 🟢 Healthy | **Services**: 8/8 Running | **Coverage**: Professional-grade skeleton
-
+Built for OpenSource Days Event — Hackathon 2026
