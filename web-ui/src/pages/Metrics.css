@@ -1,0 +1,42 @@
+.metrics-page h1 {
+  margin-bottom: 0.25rem;
+}
+
+.metrics-subtitle {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 520px) {
+  .chart-grid { grid-template-columns: 1fr; }
+}
+
+.chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.chart-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-light);
+}
+
+.chart-card h3 {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin: 0 0 1rem;
+  font-weight: 600;
+}
