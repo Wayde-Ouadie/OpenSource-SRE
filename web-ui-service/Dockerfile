@@ -11,6 +11,10 @@ RUN npm run build
 
 FROM nginx:1.27-alpine3.21 AS runtime
 
+# Upgrade base Alpine packages to patch known CVEs (openssl, libpng, libxml2)
+# that ship with the base image but aren't rebuilt by nginx image maintainers yet.
+RUN apk update && apk upgrade --no-cache && rm -rf /var/cache/apk/*
+
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
 
