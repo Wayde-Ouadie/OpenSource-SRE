@@ -1,18 +1,19 @@
+import asyncio
+import contextlib
+import logging
 import os
 import sys
-import uuid
 import time
-import asyncio
-import logging
+import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
+from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -79,11 +80,11 @@ class EscalateIn(BaseModel):
 
 def _parse_dt(value: str | None) -> datetime:
     if not value:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
     if value.endswith("Z"):
         value = value.replace("Z", "+00:00")
     dt = datetime.fromisoformat(value)
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
 def _current_from_schedule(team: str) -> dict[str, Any]:
@@ -96,7 +97,7 @@ def _current_from_schedule(team: str) -> dict[str, Any]:
     primary = schedule["primary"]
     secondary = schedule.get("secondary") or []
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     seconds = max(0, (now - start).total_seconds())
     period = 86400 if rotation == "daily" else 7 * 86400
     idx = int(seconds // period) % max(1, len(primary))
@@ -143,7 +144,7 @@ async def _escalation_loop():
                     continue
 
                 data = r.json()
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 threshold = timedelta(minutes=ESCALATION_THRESHOLD_MINUTES)
 
                 for inc in data.get("items", []):
@@ -214,10 +215,8 @@ async def lifespan(app: FastAPI):
     task = asyncio.create_task(_escalation_loop())
     yield
     task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await task
-    except asyncio.CancelledError:
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +232,7 @@ app = FastAPI(
 )
 
 from app.tracing import init_tracing
+
 init_tracing(app)
 
 

@@ -21,8 +21,19 @@ function mapIncident(raw: any): Incident {
     createdAt: raw.created_at,
     acknowledgedAt: raw.acknowledged_at || undefined,
     resolvedAt: raw.resolved_at || undefined,
-    alerts: [],     // Alerts not returned inline by backend
-    timeline: [],   // Timeline not returned inline by backend
+    alerts: (raw.alerts || []).map((a: any) => ({
+      id: a.id,
+      source: a.source || a.service || '',
+      message: a.message || '',
+      timestamp: a.timestamp || a.created_at || '',
+    })),
+    timeline: (raw.timeline || []).map((t: any) => ({
+      id: t.id,
+      type: t.type,
+      message: t.detail || t.message || '',
+      timestamp: t.timestamp,
+      actor: t.actor || undefined,
+    })),
     notes: raw.notes || [],
   };
 }

@@ -1,21 +1,22 @@
+import json
+import logging
 import os
 import sys
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
-import logging
-import json
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse, Response
-from pydantic import BaseModel, Field
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
-from sqlalchemy import JSON, DateTime, String, create_engine, select
+from pydantic import BaseModel, Field
+from sqlalchemy import JSON, DateTime, String, create_engine
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from starlette.middleware.base import BaseHTTPMiddleware
+
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -34,7 +35,7 @@ def _read_secret(env_var: str, default: str = "") -> str:
 def _build_database_url() -> str:
     url = os.environ.get(
         "DATABASE_URL",
-        "postgresql+psycopg2://opensource:opensource@postgres:5432/incident_management",
+        "postgresql+psycopg2://opensource:placeholder@postgres:5432/incident_management",
     )
     secret_pw = _read_secret("DATABASE_PASSWORD")
     if secret_pw:
@@ -56,7 +57,7 @@ class JSONFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_data = {
-            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -132,14 +133,14 @@ def _normalize_severity(value: str) -> str:
 
 def _parse_timestamp(value: str | None) -> datetime:
     if not value:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
     try:
         if value.endswith("Z"):
             return datetime.fromisoformat(value.replace("Z", "+00:00"))
         dt = datetime.fromisoformat(value)
-        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
     except Exception:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
 
 def _create_http_client() -> httpx.AsyncClient:
@@ -204,6 +205,7 @@ app = FastAPI(
 )
 
 from app.tracing import init_tracing
+
 init_tracing(app)
 
 app.add_middleware(RequestIDMiddleware)
@@ -249,7 +251,7 @@ async def create_alert(payload: AlertIn, request: Request):
     status = "correlated"
 
     # Correlation: same service + severity within 5 minutes, status=open
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
+    cutoff = datetime.now(UTC) - timedelta(minutes=5)
     try:
         async with _create_http_client() as client:
             r = await client.get(
@@ -320,8 +322,8 @@ def get_alert(alert_id: str):
     """Retrieve a single alert by ID."""
     try:
         alert_uuid = uuid.UUID(alert_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="invalid_alert_id")
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail="invalid_alert_id") from err
 
     with SessionLocal() as session:
         alert = session.get(Alert, alert_uuid)

@@ -1,21 +1,22 @@
+import json
+import logging
 import os
 import sys
 import uuid
-import json
-import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from pydantic import BaseModel, Field
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, Gauge, generate_latest
 from sqlalchemy import JSON, DateTime, String, Text, create_engine, select
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from starlette.middleware.base import BaseHTTPMiddleware
+
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -34,7 +35,7 @@ def _read_secret(env_var: str, default: str = "") -> str:
 def _build_database_url() -> str:
     url = os.environ.get(
         "DATABASE_URL",
-        "postgresql+psycopg2://opensource:opensource@postgres:5432/incident_management",
+        "postgresql+psycopg2://opensource:placeholder@postgres:5432/incident_management",
     )
     secret_pw = _read_secret("DATABASE_PASSWORD")
     if secret_pw:
@@ -54,7 +55,7 @@ NOTIFICATION_BASE_URL = os.environ.get("NOTIFICATION_BASE_URL", "http://notifica
 class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         log_data = {
-            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -96,7 +97,7 @@ class Incident(Base):
     extra_data: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     notes: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True, default=list)
     timeline: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True, default=list)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -135,7 +136,7 @@ def _append_timeline(incident: "Incident", event_type: str, detail: str, actor: 
         "type": event_type,
         "detail": detail,
         "actor": actor,
-        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
     current = list(incident.timeline or [])
     current.append(entry)
@@ -241,6 +242,7 @@ app = FastAPI(
 )
 
 from app.tracing import init_tracing
+
 init_tracing(app)
 
 app.add_middleware(RequestIDMiddleware)
@@ -352,8 +354,8 @@ async def get_incident(incident_id: str):
     """Get a specific incident by ID."""
     try:
         incident_uuid = uuid.UUID(incident_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="invalid_incident_id")
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail="invalid_incident_id") from err
 
     with SessionLocal() as session:
         incident = session.get(Incident, incident_uuid)
@@ -386,8 +388,8 @@ async def get_incident_metrics(incident_id: str):
     """Get MTTA/MTTR metrics for a specific incident."""
     try:
         incident_uuid = uuid.UUID(incident_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="invalid_incident_id")
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail="invalid_incident_id") from err
 
     with SessionLocal() as session:
         incident = session.get(Incident, incident_uuid)
@@ -411,8 +413,8 @@ async def update_incident(incident_id: str, payload: IncidentUpdate):
     """Update incident status or assignment."""
     try:
         incident_uuid = uuid.UUID(incident_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="invalid_incident_id")
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail="invalid_incident_id") from err
 
     with SessionLocal() as session:
         incident = session.get(Incident, incident_uuid)
@@ -427,13 +429,15 @@ async def update_incident(incident_id: str, payload: IncidentUpdate):
                 incident.status = new_status
 
                 if new_status == "acknowledged" and not incident.acknowledged_at:
-                    incident.acknowledged_at = datetime.now(timezone.utc)
-                    mtta = (incident.acknowledged_at - incident.created_at).total_seconds()
+                    incident.acknowledged_at = datetime.now(UTC)
+                    _created = incident.created_at.replace(tzinfo=UTC) if incident.created_at.tzinfo is None else incident.created_at
+                    mtta = (incident.acknowledged_at - _created).total_seconds()
                     INCIDENT_MTTA.observe(mtta)
 
                 if new_status == "resolved" and not incident.resolved_at:
-                    incident.resolved_at = datetime.now(timezone.utc)
-                    mttr = (incident.resolved_at - incident.created_at).total_seconds()
+                    incident.resolved_at = datetime.now(UTC)
+                    _created = incident.created_at.replace(tzinfo=UTC) if incident.created_at.tzinfo is None else incident.created_at
+                    mttr = (incident.resolved_at - _created).total_seconds()
                     INCIDENT_MTTR.observe(mttr)
                     INCIDENTS_OPEN.labels(severity=incident.severity).dec()
 
@@ -445,7 +449,7 @@ async def update_incident(incident_id: str, payload: IncidentUpdate):
             old_assignee = incident.assigned_to
             incident.assigned_to = payload.assigned_to.strip() if payload.assigned_to else None
             if old_assignee != incident.assigned_to:
-                _append_timeline(incident, "assignment", f"Assigned to '{incident.assigned_to}' (was '{old_assignee or 'unassigned'}')") 
+                _append_timeline(incident, "assignment", f"Assigned to '{incident.assigned_to}' (was '{old_assignee or 'unassigned'}')")
 
         if payload.description is not None:
             incident.description = payload.description
@@ -465,8 +469,8 @@ async def add_note(incident_id: str, payload: NoteIn):
     """Add a note/comment to an incident."""
     try:
         incident_uuid = uuid.UUID(incident_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="invalid_incident_id")
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail="invalid_incident_id") from err
 
     with SessionLocal() as session:
         incident = session.get(Incident, incident_uuid)
@@ -477,7 +481,7 @@ async def add_note(incident_id: str, payload: NoteIn):
             "id": str(uuid.uuid4()),
             "content": payload.content,
             "author": payload.author,
-            "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         }
 
         current_notes = list(incident.notes or [])

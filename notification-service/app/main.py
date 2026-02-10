@@ -1,14 +1,14 @@
+import logging
 import os
 import sys
-import httpx
 import uuid
-import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, Field
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
+from pydantic import BaseModel, Field
 
 VALID_CHANNELS = {"mock", "email", "webhook", "slack"}
 
@@ -41,6 +41,7 @@ app = FastAPI(
 )
 
 from app.tracing import init_tracing
+
 init_tracing(app)
 
 NOTIFICATIONS_SENT_TOTAL = Counter(
@@ -97,7 +98,7 @@ async def notify(payload: NotifyIn, request: Request):
             detail=f"Invalid channel '{channel}'. Must be one of: {', '.join(sorted(VALID_CHANNELS))}",
         )
 
-    ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    ts = datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
     try:
         if channel == "email":
@@ -107,7 +108,7 @@ async def notify(payload: NotifyIn, request: Request):
 
             if not api_key or "PLACEHOLDER" in api_key.upper():
                 logger.warning(
-                    "RESEND_API_KEY not configured – email logged but not sent.",
+                    "RESEND_API_KEY not configured - email logged but not sent.",
                     extra={"incident_id": payload.incident_id, "request_id": request_id},
                 )
             else:
@@ -160,7 +161,7 @@ async def notify(payload: NotifyIn, request: Request):
                     )
             else:
                 logger.warning(
-                    "Webhook channel used but no valid target URL provided – logged only.",
+                    "Webhook channel used but no valid target URL provided - logged only.",
                     extra={"incident_id": payload.incident_id, "target": target_url},
                 )
 
@@ -185,14 +186,14 @@ async def notify(payload: NotifyIn, request: Request):
             f"Notification delivery failed (HTTP {e.response.status_code}): {e}",
             extra={"channel": channel, "incident_id": payload.incident_id},
         )
-        raise HTTPException(status_code=502, detail=f"Upstream delivery failed: {e.response.status_code}")
+        raise HTTPException(status_code=502, detail=f"Upstream delivery failed: {e.response.status_code}") from e
     except Exception as e:
         NOTIFICATIONS_SENT_TOTAL.labels(channel=channel, status="failed").inc()
         logger.error(
             f"Notification delivery failed: {e}",
             extra={"channel": channel, "incident_id": payload.incident_id},
         )
-        raise HTTPException(status_code=500, detail="Notification delivery failed")
+        raise HTTPException(status_code=500, detail="Notification delivery failed") from e
 
     return JSONResponse(
         status_code=201,

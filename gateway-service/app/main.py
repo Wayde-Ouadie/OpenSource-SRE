@@ -1,7 +1,7 @@
+import logging
 import os
 import sys
 import uuid
-import logging
 
 import httpx
 from fastapi import FastAPI, Request
@@ -53,8 +53,8 @@ def metrics():
 async def api_health(request: Request):
     """Proxy health check to incident management."""
     request_id = getattr(request.state, "request_id", "unknown")
-    logger.info(f"Proxying health check", extra={"request_id": request_id})
-    
+    logger.info("Proxying health check", extra={"request_id": request_id})
+
     try:
         transport = httpx.AsyncHTTPTransport(retries=3)
         async with httpx.AsyncClient(
@@ -64,5 +64,5 @@ async def api_health(request: Request):
             r = await client.get(f"{INCIDENT_MGMT_BASE_URL}/health")
             return r.json()
     except Exception as e:
-        logger.error(f"Health check failed", extra={"error": str(e), "request_id": request_id})
+        logger.error("Health check failed", extra={"error": str(e), "request_id": request_id})
         return {"status": "error", "message": str(e)}
