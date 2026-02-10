@@ -13,6 +13,12 @@ python -m compileall -q \
   oncall-service \
   notification-service \
   gateway-service
+
+# Run Ruff linter
+if command -v ruff >/dev/null 2>&1 || pip install ruff >/dev/null 2>&1; then
+  ruff check incident-management-service/ alert-ingestion-service/ oncall-service/ notification-service/ gateway-service/ --config pyproject.toml
+fi
+
 ( cd web-ui-service && npm ci && npm run build )
 
 stage "Stage 2/7: Security (secrets)"

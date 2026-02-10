@@ -5,6 +5,35 @@ import { mockIncidents, mockOnCall, mockEscalationPolicies, mockMetrics } from '
 const API_BASE = '';
 
 // ---------------------------------------------------------------------------
+// API Error Tracking — surfaces backend failures to the UI
+// ---------------------------------------------------------------------------
+
+/** Whether the last API call used fallback mock data due to a backend error. */
+let _lastCallUsedFallback = false;
+let _lastErrorMessage = '';
+
+/** Returns true if the most recent API call fell back to mock data. */
+export function isUsingMockData(): boolean {
+  return _lastCallUsedFallback;
+}
+
+/** Returns the error message from the last failed API call, or empty string. */
+export function getLastApiError(): string {
+  return _lastErrorMessage;
+}
+
+function _markFallback(err: unknown): void {
+  _lastCallUsedFallback = true;
+  _lastErrorMessage =
+    err instanceof Error ? err.message : 'Backend unreachable — showing cached demo data';
+}
+
+function _clearFallback(): void {
+  _lastCallUsedFallback = false;
+  _lastErrorMessage = '';
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -47,9 +76,10 @@ export async function getIncidents(): Promise<Incident[]> {
     const res = await fetch(`${API_BASE}/api/v1/incidents?limit=100`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    _clearFallback();
     return (data.items || []).map(mapIncident);
-  } catch {
-    // Fallback to mock data when backend is unavailable
+  } catch (err) {
+    _markFallback(err);
     return structuredClone(mockIncidents);
   }
 }
@@ -59,8 +89,10 @@ export async function getIncident(id: string): Promise<Incident | undefined> {
     const res = await fetch(`${API_BASE}/api/v1/incidents/${id}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const raw = await res.json();
+    _clearFallback();
     return mapIncident(raw);
-  } catch {
+  } catch (err) {
+    _markFallback(err);
     return structuredClone(mockIncidents.find((i) => i.id === id));
   }
 }
@@ -82,8 +114,10 @@ export async function createIncident(payload: CreateIncidentPayload): Promise<In
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const raw = await res.json();
+    _clearFallback();
     return mapIncident(raw);
-  } catch {
+  } catch (err) {
+    _markFallback(err);
     // Fallback: create a mock incident locally
     const now = new Date().toISOString();
     const newIncident: Incident = {
@@ -125,7 +159,8 @@ export async function updateIncidentStatus(
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     // Re-fetch full incident after update
     return getIncident(id);
-  } catch {
+  } catch (err) {
+    _markFallback(err);
     // Fallback: mutate mock data
     const incident = mockIncidents.find((i) => i.id === id);
     if (!incident) return undefined;
@@ -151,7 +186,8 @@ export async function addNote(
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     return data.note;
-  } catch {
+  } catch (err) {
+    _markFallback(err);
     // Fallback: add note to mock data locally
     const note = {
       id: `NOTE-${Date.now()}`,
@@ -203,7 +239,8 @@ export async function getOnCallEngineers(): Promise<OnCallEngineer[]> {
       }
     }
     return engineers.length > 0 ? engineers : structuredClone(mockOnCall);
-  } catch {
+  } catch (err) {
+    _markFallback(err);
     return structuredClone(mockOnCall);
   }
 }
@@ -271,7 +308,8 @@ export async function getMetrics(): Promise<MetricsData> {
       .sort((a, b) => b.count - a.count);
 
     return { mttaTrend, mttrTrend, incidentsPerService, incidentVolume };
-  } catch {
+  } catch (err) {
+    _markFallback(err);
     return structuredClone(mockMetrics);
   }
 }

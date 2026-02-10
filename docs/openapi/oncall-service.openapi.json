@@ -1,0 +1,71 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "oncall-service",
+    "description": "On-call schedule management and automatic escalation.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": { "summary": "Health check", "responses": { "200": { "description": "OK" } } }
+    },
+    "/metrics": {
+      "get": { "summary": "Prometheus metrics", "responses": { "200": { "description": "Prometheus text format" } } }
+    },
+    "/api/v1/schedules": {
+      "get": { "summary": "List on-call schedules", "responses": { "200": { "description": "Schedules list" } } },
+      "post": {
+        "summary": "Create or update an on-call schedule",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["team", "primary"],
+                "properties": {
+                  "team": { "type": "string" },
+                  "primary": { "type": "array", "items": { "type": "string" } },
+                  "secondary": { "type": "array", "items": { "type": "string" } },
+                  "rotation": { "type": "string", "enum": ["weekly", "daily"] },
+                  "starts_at": { "type": "string", "format": "date-time" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Schedule created/updated" } }
+      }
+    },
+    "/api/v1/oncall/current": {
+      "get": {
+        "summary": "Get current on-call engineer for a team",
+        "parameters": [
+          { "name": "team", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Current on-call info" } }
+      }
+    },
+    "/api/v1/escalate": {
+      "post": {
+        "summary": "Manually escalate to secondary on-call",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["team"],
+                "properties": {
+                  "team": { "type": "string" },
+                  "incident_id": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Escalation result" } }
+      }
+    }
+  }
+}

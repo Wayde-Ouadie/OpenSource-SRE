@@ -47,3 +47,46 @@ groups:
         annotations:
           summary: "Container {{ $labels.name }} high memory"
           description: "Usage is at {{ $value }}% of limit."
+
+  # SRE METRICS - MTTA / MTTR / Escalation thresholds
+  - name: sre_metrics
+    rules:
+      # [WARNING] p95 MTTA exceeds 15 minutes
+      - alert: HighMTTA
+        expr: histogram_quantile(0.95, sum(rate(incident_mtta_seconds_bucket[1h])) by (le)) > 900
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 MTTA exceeds 15 minutes"
+          description: "p95 mean time to acknowledge is {{ $value }}s (threshold: 900s)."
+
+      # [CRITICAL] p95 MTTR exceeds 2 hours
+      - alert: HighMTTR
+        expr: histogram_quantile(0.95, sum(rate(incident_mttr_seconds_bucket[1h])) by (le)) > 7200
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "p95 MTTR exceeds 2 hours"
+          description: "p95 mean time to resolve is {{ $value }}s (threshold: 7200s)."
+
+      # [WARNING] escalation rate is high
+      - alert: HighEscalationRate
+        expr: sum(rate(escalations_total[10m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High escalation rate"
+          description: "Escalation rate is {{ $value }}/s over the last 10 minutes."
+
+      # [WARNING] too many open critical incidents
+      - alert: TooManyCriticalIncidents
+        expr: sum(incidents_open{severity="critical"}) > 5
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "More than 5 critical incidents open"
+          description: "There are {{ $value }} critical incidents currently open."

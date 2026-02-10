@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import ApiErrorBanner from './ApiErrorBanner';
 
 export default function Layout() {
   const linkBase =
@@ -68,8 +69,11 @@ export default function Layout() {
       </nav>
 
       {/* Main content */}
-      <main className="flex-1 p-6 lg:p-8 xl:p-10 overflow-y-auto min-h-screen">
-        <Outlet />
+      <main className="flex-1 overflow-y-auto min-h-screen">
+        <ApiErrorBanner />
+        <div className="p-6 lg:p-8 xl:p-10">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

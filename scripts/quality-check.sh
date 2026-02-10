@@ -27,16 +27,32 @@ for service in "${python_services[@]}"; do
     fi
 done
 
-# 2. Check for Python linting (if tools available)
+# 2. Check for Python linting (Ruff)
 echo
-echo "2. Python Linting (if available)"
-if command -v pylint >/dev/null 2>&1; then
+echo "2. Python Linting (Ruff)"
+if command -v ruff >/dev/null 2>&1; then
     for service in "${python_services[@]}"; do
-        echo "  Linting $service..."
-        pylint "$service" --exit-zero --score=yes || true
+        echo -n "  Linting $service... "
+        if ruff check "$service" --config pyproject.toml; then
+            echo "✓ OK"
+        else
+            echo "✗ LINT ERRORS"
+            FAILED=1
+        fi
+    done
+elif pip install ruff >/dev/null 2>&1; then
+    echo "  Installed ruff, running lints..."
+    for service in "${python_services[@]}"; do
+        echo -n "  Linting $service... "
+        if ruff check "$service" --config pyproject.toml; then
+            echo "✓ OK"
+        else
+            echo "✗ LINT ERRORS"
+            FAILED=1
+        fi
     done
 else
-    echo "  ⊘ pylint not installed (skipping)"
+    echo "  ⊘ ruff not available (skipping)"
 fi
 
 # 3. JavaScript/TypeScript quality (web-ui)

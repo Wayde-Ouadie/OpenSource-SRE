@@ -55,10 +55,10 @@ verify: test-integration test-e2e test-metrics
 	@echo "✓ Deployment verification passed!"
 
 test-unit:
-	@echo "==> Running unit tests..."
+	@echo "==> Running unit tests with coverage..."
 	@for svc in incident-management-service alert-ingestion-service oncall-service notification-service gateway-service; do \
 		echo "  Testing $$svc..."; \
-		cd $$svc && python -m pytest tests/ -v --tb=short 2>/dev/null && cd .. || { echo "  ✗ $$svc tests failed"; cd ..; }; \
+		cd $$svc && python -m pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-fail-under=60 2>/dev/null && cd .. || { echo "  ✗ $$svc tests failed"; cd ..; }; \
 	done
 	@echo "✓ Unit tests completed!"
 
@@ -111,6 +111,9 @@ clean:
 	$(DC) down --rmi all --volumes --remove-orphans
 	@docker system prune -f
 
+export-openapi:
+	@bash scripts/export-openapi.sh
+
 status:
 	@echo "==> Service Status"
 	@$(DC) ps
@@ -118,4 +121,4 @@ status:
 	@echo "==> Quick Metrics Check"
 	@$(DC) exec -T incident-management curl -s http://localhost:8002/metrics 2>/dev/null | grep -E "incidents_total|incident_mtta|incident_mttr" || echo "Metrics not available"
 
-.phony: build up down logs ps re health test-integration test-e2e test-load test-metrics test-security test-quality test-all test-unit verify scale-demo deploy deploy-test-rollback pipeline workflow-quality workflow-security workflow-build workflow-scan workflow-test workflow-deploy workflow-verify all-workflows workflow-act clean status
+.phony: build up down logs ps re health test-integration test-e2e test-load test-metrics test-security test-quality test-all test-unit verify scale-demo deploy deploy-test-rollback pipeline workflow-quality workflow-security workflow-build workflow-scan workflow-test workflow-deploy workflow-verify all-workflows workflow-act clean export-openapi status

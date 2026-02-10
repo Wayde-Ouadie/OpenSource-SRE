@@ -16,8 +16,8 @@ services:
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     secrets:
       - postgres_password
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+    expose:
+      - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -116,8 +116,15 @@ services:
     environment:
       INCIDENT_MGMT_BASE_URL: ${INCIDENT_MGMT_BASE_URL:-http://incident-management:8002}
       NOTIFICATION_BASE_URL: ${NOTIFICATION_BASE_URL:-http://notification-service:8004}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://opensource:placeholder@postgres:5432/incident_management}
+      DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       OTEL_SERVICE_NAME: oncall-service
+    secrets:
+      - postgres_password
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "${ONCALL_PORT:-8003}:8003"
     healthcheck:

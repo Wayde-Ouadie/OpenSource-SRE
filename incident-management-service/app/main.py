@@ -86,6 +86,7 @@ class Base(DeclarativeBase):
 
 class Incident(Base):
     __tablename__ = "incidents"
+    __table_args__ = {"schema": "incident_management"}
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     service: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
@@ -223,7 +224,10 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Creating database tables (if not exist)")
+    logger.info("Creating database schema and tables (if not exist)")
+    with engine.connect() as conn:
+        conn.execute(__import__("sqlalchemy").text("CREATE SCHEMA IF NOT EXISTS incident_management"))
+        conn.commit()
     Base.metadata.create_all(bind=engine)
     logger.info("Incident-management service ready")
     yield

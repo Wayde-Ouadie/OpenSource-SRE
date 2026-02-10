@@ -1,0 +1,39 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "notification-service",
+    "description": "Multi-channel notification delivery (mock, email via Resend, webhook).",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": { "summary": "Health check", "responses": { "200": { "description": "OK" } } }
+    },
+    "/metrics": {
+      "get": { "summary": "Prometheus metrics", "responses": { "200": { "description": "Prometheus text format" } } }
+    },
+    "/api/v1/notify": {
+      "post": {
+        "summary": "Send a notification",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["incident_id", "message"],
+                "properties": {
+                  "incident_id": { "type": "string" },
+                  "message": { "type": "string" },
+                  "channel": { "type": "string", "enum": ["mock", "email", "webhook", "slack"], "default": "mock" },
+                  "target": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Notification sent" } }
+      }
+    }
+  }
+}

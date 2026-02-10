@@ -89,6 +89,7 @@ class Base(DeclarativeBase):
 
 class Alert(Base):
     __tablename__ = "alerts"
+    __table_args__ = {"schema": "alert_ingestion"}
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     service: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -186,7 +187,10 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Creating database tables (if not exist)")
+    logger.info("Creating database schema and tables (if not exist)")
+    with engine.connect() as conn:
+        conn.execute(__import__("sqlalchemy").text("CREATE SCHEMA IF NOT EXISTS alert_ingestion"))
+        conn.commit()
     Base.metadata.create_all(bind=engine)
     logger.info("Alert-ingestion service ready")
     yield
@@ -337,6 +341,40 @@ def get_alert(alert_id: str):
             "labels": alert.labels,
             "timestamp": alert.timestamp.isoformat().replace("+00:00", "Z"),
             "incident_id": alert.incident_id,
+        }
+
+
+@app.get("/api/v1/alerts")
+def list_alerts(
+    service: str | None = Query(None, description="Filter by service name"),
+    severity: str | None = Query(None, description="Filter by severity"),
+    limit: int = Query(100, ge=1, le=500, description="Max results"),
+):
+    """List alerts with optional filters."""
+    from sqlalchemy import select as sa_select
+
+    with SessionLocal() as session:
+        stmt = sa_select(Alert)
+        if service:
+            stmt = stmt.where(Alert.service == service.strip())
+        if severity:
+            stmt = stmt.where(Alert.severity == _normalize_severity(severity))
+        stmt = stmt.order_by(Alert.timestamp.desc()).limit(limit)
+        alerts = session.execute(stmt).scalars().all()
+        return {
+            "items": [
+                {
+                    "alert_id": str(a.id),
+                    "service": a.service,
+                    "severity": a.severity,
+                    "message": a.message,
+                    "labels": a.labels,
+                    "timestamp": a.timestamp.isoformat().replace("+00:00", "Z"),
+                    "incident_id": a.incident_id,
+                }
+                for a in alerts
+            ],
+            "count": len(alerts),
         }
 
 

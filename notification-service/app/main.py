@@ -44,16 +44,10 @@ from app.tracing import init_tracing
 
 init_tracing(app)
 
-NOTIFICATIONS_SENT_TOTAL = Counter(
-    "notifications_sent_total",
-    "Total notifications sent",
-    ["channel", "status"],
-)
-
 ONCALL_NOTIFICATIONS_SENT_TOTAL = Counter(
     "oncall_notifications_sent_total",
-    "Total on-call notifications sent",
-    ["channel"],
+    "Total on-call notifications sent (spec-required metric)",
+    ["channel", "status"],
 )
 
 
@@ -178,17 +172,16 @@ async def notify(payload: NotifyIn, request: Request):
             },
         )
 
-        NOTIFICATIONS_SENT_TOTAL.labels(channel=channel, status="sent").inc()
-        ONCALL_NOTIFICATIONS_SENT_TOTAL.labels(channel=channel).inc()
+        ONCALL_NOTIFICATIONS_SENT_TOTAL.labels(channel=channel, status="sent").inc()
     except httpx.HTTPStatusError as e:
-        NOTIFICATIONS_SENT_TOTAL.labels(channel=channel, status="failed").inc()
+        ONCALL_NOTIFICATIONS_SENT_TOTAL.labels(channel=channel, status="failed").inc()
         logger.error(
             f"Notification delivery failed (HTTP {e.response.status_code}): {e}",
             extra={"channel": channel, "incident_id": payload.incident_id},
         )
         raise HTTPException(status_code=502, detail=f"Upstream delivery failed: {e.response.status_code}") from e
     except Exception as e:
-        NOTIFICATIONS_SENT_TOTAL.labels(channel=channel, status="failed").inc()
+        ONCALL_NOTIFICATIONS_SENT_TOTAL.labels(channel=channel, status="failed").inc()
         logger.error(
             f"Notification delivery failed: {e}",
             extra={"channel": channel, "incident_id": payload.incident_id},

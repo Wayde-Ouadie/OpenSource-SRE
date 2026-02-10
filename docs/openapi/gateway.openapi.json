@@ -1,0 +1,19 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "gateway-service",
+    "description": "API Gateway — rate limiting, optional API key auth, request logging, routing.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": { "summary": "Health check", "responses": { "200": { "description": "OK" } } }
+    },
+    "/metrics": {
+      "get": { "summary": "Prometheus metrics", "responses": { "200": { "description": "Prometheus text format" } } }
+    },
+    "/api/health": {
+      "get": { "summary": "Proxy health check to incident-management", "responses": { "200": { "description": "Upstream health" } } }
+    }
+  }
+}

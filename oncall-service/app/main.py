@@ -1,7 +1,9 @@
 import asyncio
 import contextlib
+import json
 import logging
 import os
+import re
 import sys
 import time
 import uuid
@@ -14,6 +16,8 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
 from pydantic import BaseModel, Field
+from sqlalchemy import JSON, DateTime, String, create_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -22,6 +26,30 @@ INCIDENT_MGMT_BASE_URL = os.environ.get("INCIDENT_MGMT_BASE_URL", "http://incide
 NOTIFICATION_BASE_URL = os.environ.get("NOTIFICATION_BASE_URL", "http://notification-service:8004")
 ESCALATION_THRESHOLD_MINUTES = int(os.environ.get("ESCALATION_THRESHOLD_MINUTES", "5"))
 ESCALATION_CHECK_INTERVAL = int(os.environ.get("ESCALATION_CHECK_INTERVAL", "60"))
+
+
+def _read_secret(env_var: str, default: str = "") -> str:
+    file_path = os.environ.get(f"{env_var}_FILE")
+    if file_path:
+        try:
+            return open(file_path).read().strip()
+        except OSError:
+            pass
+    return os.environ.get(env_var, default)
+
+
+def _build_database_url() -> str:
+    url = os.environ.get(
+        "DATABASE_URL",
+        "postgresql+psycopg2://opensource:placeholder@postgres:5432/incident_management",
+    )
+    secret_pw = _read_secret("DATABASE_PASSWORD")
+    if secret_pw:
+        url = re.sub(r"(://[^:]+:)[^@]+(@)", rf"\g<1>{secret_pw}\2", url)
+    return url
+
+
+DATABASE_URL = _build_database_url()
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -34,9 +62,31 @@ logging.basicConfig(
 logger = logging.getLogger("oncall-service")
 
 # ---------------------------------------------------------------------------
-# In-memory data
+# Database
 # ---------------------------------------------------------------------------
-SCHEDULES: dict[str, dict[str, Any]] = {}
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class ScheduleRow(Base):
+    __tablename__ = "oncall_schedules"
+    __table_args__ = {"schema": "oncall"}
+
+    team: Mapped[str] = mapped_column(String(200), primary_key=True)
+    primary: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    secondary: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    rotation: Mapped[str] = mapped_column(String(20), nullable=False, default="weekly")
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
 # Track incidents we already escalated so we don't repeat
 _escalated_incidents: set[str] = set()
 
@@ -88,14 +138,15 @@ def _parse_dt(value: str | None) -> datetime:
 
 
 def _current_from_schedule(team: str) -> dict[str, Any]:
-    schedule = SCHEDULES.get(team)
-    if not schedule:
-        raise HTTPException(status_code=404, detail="schedule_not_found")
+    with SessionLocal() as session:
+        schedule = session.get(ScheduleRow, team)
+        if not schedule:
+            raise HTTPException(status_code=404, detail="schedule_not_found")
 
-    start = schedule["starts_at"]
-    rotation = schedule["rotation"]
-    primary = schedule["primary"]
-    secondary = schedule.get("secondary") or []
+        start = schedule.starts_at
+        rotation = schedule.rotation
+        primary = schedule.primary
+        secondary = schedule.secondary or []
 
     now = datetime.now(UTC)
     seconds = max(0, (now - start).total_seconds())
@@ -168,7 +219,9 @@ async def _escalation_loop():
 
                     # Find secondary on-call for this service/team
                     escalated_to = None
-                    if service in SCHEDULES:
+                    with SessionLocal() as db_session:
+                        sched_row = db_session.get(ScheduleRow, service)
+                    if sched_row:
                         try:
                             current = _current_from_schedule(service)
                             escalated_to = current.get("secondary") or current.get("primary")
@@ -211,7 +264,12 @@ async def _escalation_loop():
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("On-call service starting")
+    logger.info("On-call service starting — creating database tables")
+    # Ensure the 'oncall' schema exists before creating tables
+    with engine.connect() as conn:
+        conn.execute(__import__("sqlalchemy").text("CREATE SCHEMA IF NOT EXISTS oncall"))
+        conn.commit()
+    Base.metadata.create_all(bind=engine)
     task = asyncio.create_task(_escalation_loop())
     yield
     task.cancel()
@@ -261,18 +319,20 @@ def metrics():
 
 @app.get("/api/v1/schedules")
 def list_schedules():
-    return {
-        "items": [
-            {
-                "team": team,
-                "primary": sched["primary"],
-                "secondary": sched.get("secondary"),
-                "rotation": sched["rotation"],
-                "starts_at": sched["starts_at"].isoformat().replace("+00:00", "Z"),
-            }
-            for team, sched in SCHEDULES.items()
-        ]
-    }
+    with SessionLocal() as session:
+        rows = session.query(ScheduleRow).all()
+        return {
+            "items": [
+                {
+                    "team": row.team,
+                    "primary": row.primary,
+                    "secondary": row.secondary,
+                    "rotation": row.rotation,
+                    "starts_at": row.starts_at.isoformat().replace("+00:00", "Z"),
+                }
+                for row in rows
+            ]
+        }
 
 
 @app.post("/api/v1/schedules")
@@ -286,13 +346,23 @@ def create_schedule(payload: ScheduleIn, request: Request):
     if rotation not in {"weekly", "daily"}:
         raise HTTPException(status_code=400, detail="invalid_rotation")
 
-    SCHEDULES[team] = {
-        "primary": [x.strip() for x in payload.primary if x.strip()],
-        "secondary": [x.strip() for x in (payload.secondary or []) if x.strip()],
-        "rotation": rotation,
-        "starts_at": _parse_dt(payload.starts_at),
-        "created_at": time.time(),
-    }
+    with SessionLocal() as session:
+        existing = session.get(ScheduleRow, team)
+        if existing:
+            existing.primary = [x.strip() for x in payload.primary if x.strip()]
+            existing.secondary = [x.strip() for x in (payload.secondary or []) if x.strip()]
+            existing.rotation = rotation
+            existing.starts_at = _parse_dt(payload.starts_at)
+        else:
+            row = ScheduleRow(
+                team=team,
+                primary=[x.strip() for x in payload.primary if x.strip()],
+                secondary=[x.strip() for x in (payload.secondary or []) if x.strip()],
+                rotation=rotation,
+                starts_at=_parse_dt(payload.starts_at),
+            )
+            session.add(row)
+        session.commit()
 
     logger.info(f"Created schedule for team {team}", extra={"team": team, "rotation": rotation, "request_id": request_id})
 

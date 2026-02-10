@@ -292,6 +292,102 @@
           "legendFormat": "{{result}}"
         }
       ]
+    },
+    {
+      "type": "timeseries",
+      "title": "MTTA Moving Average (1h sliding window)",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum(rate(incident_mtta_seconds_bucket[1h])) by (le))",
+          "legendFormat": "p50 MTTA (1h)"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum(rate(incident_mtta_seconds_bucket[1h])) by (le))",
+          "legendFormat": "p95 MTTA (1h)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "MTTR Moving Average (1h sliding window)",
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum(rate(incident_mttr_seconds_bucket[1h])) by (le))",
+          "legendFormat": "p50 MTTR (1h)"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum(rate(incident_mttr_seconds_bucket[1h])) by (le))",
+          "legendFormat": "p95 MTTR (1h)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Notifications Sent Rate by Channel",
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (channel) (rate(oncall_notifications_sent_total[5m]))",
+          "legendFormat": "{{channel}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Escalation Rate by Team",
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (team) (rate(escalations_total[5m]))",
+          "legendFormat": "{{team}}"
+        }
+      ]
     }
   ]
 }

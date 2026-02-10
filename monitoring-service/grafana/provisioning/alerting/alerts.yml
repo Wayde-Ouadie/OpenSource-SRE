@@ -1,0 +1,52 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: SRE Thresholds
+    folder: alerts
+    interval: 1m
+    rules:
+      - uid: sre-high-mtta
+        title: "High MTTA (p95 > 15min)"
+        condition: A
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: "histogram_quantile(0.95, sum(rate(incident_mtta_seconds_bucket[1h])) by (le)) > 900"
+              instant: true
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 MTTA exceeds 15 minutes"
+
+      - uid: sre-high-mttr
+        title: "High MTTR (p95 > 2h)"
+        condition: A
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: "histogram_quantile(0.95, sum(rate(incident_mttr_seconds_bucket[1h])) by (le)) > 7200"
+              instant: true
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "p95 MTTR exceeds 2 hours"
+
+      - uid: sre-critical-incidents
+        title: "Too many critical incidents open"
+        condition: A
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: "sum(incidents_open{severity=\"critical\"}) > 5"
+              instant: true
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "More than 5 critical incidents currently open"

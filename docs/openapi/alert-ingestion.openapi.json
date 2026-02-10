@@ -1,0 +1,52 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "alert-ingestion-service",
+    "description": "Receives, validates, normalizes, and correlates alerts into incidents.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": { "summary": "Health check", "responses": { "200": { "description": "OK" } } }
+    },
+    "/metrics": {
+      "get": { "summary": "Prometheus metrics", "responses": { "200": { "description": "Prometheus text format" } } }
+    },
+    "/api/v1/alerts": {
+      "get": {
+        "summary": "List alerts",
+        "parameters": [
+          { "name": "service", "in": "query", "schema": { "type": "string" } },
+          { "name": "severity", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } }
+        ],
+        "responses": { "200": { "description": "List of alerts" } }
+      },
+      "post": {
+        "summary": "Ingest a new alert",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["service", "severity", "message"],
+                "properties": {
+                  "service": { "type": "string" },
+                  "severity": { "type": "string" },
+                  "message": { "type": "string" },
+                  "labels": { "type": "object" },
+                  "timestamp": { "type": "string", "format": "date-time" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Alert processed" } }
+      }
+    },
+    "/api/v1/alerts/{alert_id}": {
+      "get": { "summary": "Get alert by ID", "responses": { "200": { "description": "Alert details" } } }
+    }
+  }
+}

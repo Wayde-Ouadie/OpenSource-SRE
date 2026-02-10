@@ -1,0 +1,76 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "incident-management-service",
+    "description": "Core incident lifecycle management — create, update, acknowledge, resolve incidents with full timeline and notes.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": { "summary": "Health check", "responses": { "200": { "description": "OK" } } }
+    },
+    "/metrics": {
+      "get": { "summary": "Prometheus metrics", "responses": { "200": { "description": "Prometheus text format" } } }
+    },
+    "/api/v1/incidents": {
+      "get": {
+        "summary": "List incidents",
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string" } },
+          { "name": "service", "in": "query", "schema": { "type": "string" } },
+          { "name": "severity", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } }
+        ],
+        "responses": { "200": { "description": "List of incidents" } }
+      },
+      "post": {
+        "summary": "Create incident",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["service", "severity", "title"],
+                "properties": {
+                  "service": { "type": "string" },
+                  "severity": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
+                  "title": { "type": "string" },
+                  "description": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Created incident" } }
+      }
+    },
+    "/api/v1/incidents/{incident_id}": {
+      "get": { "summary": "Get incident by ID", "responses": { "200": { "description": "Incident details" } } },
+      "patch": {
+        "summary": "Update incident status/assignment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": { "type": "string" },
+                  "assigned_to": { "type": "string" },
+                  "description": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Updated incident" } }
+      }
+    },
+    "/api/v1/incidents/{incident_id}/notes": {
+      "post": { "summary": "Add note to incident", "responses": { "200": { "description": "Note added" } } }
+    },
+    "/api/v1/incidents/{incident_id}/metrics": {
+      "get": { "summary": "Get MTTA/MTTR metrics for incident", "responses": { "200": { "description": "Metrics" } } }
+    }
+  }
+}
