@@ -86,13 +86,16 @@ workflow-build:
 workflow-scan:
 	@bash scripts/workflows-tests/scan-images-workflow.sh
 
+workflow-test:
+	@bash scripts/workflows-tests/test-unit-workflow.sh
+
 workflow-deploy:
 	@bash scripts/workflows-tests/deploy-stack-workflow.sh
 
 workflow-verify:
 	@bash scripts/workflows-tests/verify-deployment-workflow.sh
 
-all-workflows: workflow-quality workflow-security workflow-build workflow-deploy workflow-verify
+all-workflows: workflow-quality workflow-security workflow-build workflow-test workflow-deploy workflow-verify
 	@echo ""
 	@echo "✓ All workflow tests completed!"
 
@@ -115,4 +118,4 @@ status:
 	@echo "==> Quick Metrics Check"
 	@$(DC) exec -T incident-management curl -s http://localhost:8002/metrics 2>/dev/null | grep -E "incidents_total|incident_mtta|incident_mttr" || echo "Metrics not available"
 
-.phony: build up down logs ps re health test-integration test-e2e test-load test-metrics test-security test-quality test-all test-unit verify scale-demo deploy deploy-test-rollback pipeline workflow-quality workflow-security workflow-build workflow-scan workflow-deploy workflow-verify all-workflows workflow-act clean status
+.phony: build up down logs ps re health test-integration test-e2e test-load test-metrics test-security test-quality test-all test-unit verify scale-demo deploy deploy-test-rollback pipeline workflow-quality workflow-security workflow-build workflow-scan workflow-test workflow-deploy workflow-verify all-workflows workflow-act clean status
