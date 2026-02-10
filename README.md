@@ -6,6 +6,8 @@
 
 Production-ready incident management and on-call platform built with microservices architecture, full observability, and DevOps best practices.
 
+> 📐 **[Architecture Diagram & Request Flow →](docs/architecture.md)**
+
 ## 🚀 Quick Start
 
 ```bash
@@ -33,7 +35,7 @@ make logs
 
 ## 📋 Architecture
 
-7 microservices + monitoring stack:
+6 microservices + monitoring stack:
 
 ```
 Services:
@@ -42,7 +44,6 @@ Services:
 ├── oncall-service (8003)       - On-call scheduling and escalation
 ├── notification-service (8004) - Multi-channel notifications
 ├── gateway (8010)              - API gateway
-├── monitoring (8011)           - Observability aggregation
 └── web-ui (8080)               - React frontend
 
 Infrastructure:
@@ -211,6 +212,14 @@ Stages:
 ## 📄 License
 
 See [LICENSE](LICENSE) file.
+
+## 👥 Team
+
+| Name | Role |
+|---|---|
+| **Abderrahmane Riyad** | Frontend Developer |
+| **Yasser Rafai** | Backend Developer |
+| **Ouadie El Fengour** | DevOps Engineer / Backend Developer |
 
 ## 🤝 Contributing
 
