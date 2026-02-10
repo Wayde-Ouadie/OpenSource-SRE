@@ -38,7 +38,8 @@ function _clearFallback(): void {
 // ---------------------------------------------------------------------------
 
 /** Map backend incident JSON to frontend Incident type */
-function mapIncident(raw: any): Incident {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- raw JSON from backend
+function mapIncident(raw: Record<string, any>): Incident {
   return {
     id: raw.id,
     service: raw.service,
@@ -50,13 +51,15 @@ function mapIncident(raw: any): Incident {
     createdAt: raw.created_at,
     acknowledgedAt: raw.acknowledged_at || undefined,
     resolvedAt: raw.resolved_at || undefined,
-    alerts: (raw.alerts || []).map((a: any) => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- raw JSON
+    alerts: (raw.alerts || []).map((a: Record<string, any>) => ({
       id: a.id,
       source: a.source || a.service || '',
       message: a.message || '',
       timestamp: a.timestamp || a.created_at || '',
     })),
-    timeline: (raw.timeline || []).map((t: any) => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- raw JSON
+    timeline: (raw.timeline || []).map((t: Record<string, any>) => ({
       id: t.id,
       type: t.type,
       message: t.detail || t.message || '',

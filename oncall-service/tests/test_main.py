@@ -1,5 +1,5 @@
 """Tests for oncall-service helper functions and API endpoints."""
-from datetime import UTC, datetime
+from datetime import UTC
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,8 +8,6 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import app.main as mod
-from app.tracing import init_tracing
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures

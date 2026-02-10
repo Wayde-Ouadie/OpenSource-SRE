@@ -142,8 +142,6 @@ def _current_from_schedule(team: str) -> dict[str, Any]:
             raise HTTPException(status_code=404, detail="schedule_not_found")
 
         start = schedule.starts_at
-        if start.tzinfo is None:
-            start = start.replace(tzinfo=UTC)
         rotation = schedule.rotation
         primary = schedule.primary
         secondary = schedule.secondary or []
