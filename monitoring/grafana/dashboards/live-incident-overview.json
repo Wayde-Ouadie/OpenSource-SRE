@@ -1,52 +1,295 @@
 {
   "uid": "live-incident-overview",
-  "title": "Live Incident Overview (Skeleton)",
+  "title": "Live Incident Overview",
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "10s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "panels": [
     {
       "type": "stat",
-      "title": "Open Incidents",
-      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+      "title": "Open Incidents (Total)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        }
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(incidents_total{status=\"open\"})"
+          "expr": "sum(incidents_total{status=\"open\"}) or vector(0)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Critical Open",
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "red",
+            "mode": "fixed"
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(incidents_open{severity=\"critical\"}) or vector(0)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "High Open",
+      "gridPos": {
+        "x": 7,
+        "y": 0,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "orange",
+            "mode": "fixed"
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(incidents_open{severity=\"high\"}) or vector(0)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Medium Open",
+      "gridPos": {
+        "x": 10,
+        "y": 0,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "yellow",
+            "mode": "fixed"
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(incidents_open{severity=\"medium\"}) or vector(0)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Low Open",
+      "gridPos": {
+        "x": 13,
+        "y": 0,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(incidents_open{severity=\"low\"}) or vector(0)"
+        }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "MTTA (Current Avg seconds)",
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 300
+              },
+              {
+                "color": "red",
+                "value": 900
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum(rate(incident_mtta_seconds_bucket[1h])) by (le)) or vector(0)"
+        }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "MTTR (Current Avg seconds)",
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1800
+              },
+              {
+                "color": "red",
+                "value": 7200
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum(rate(incident_mttr_seconds_bucket[1h])) by (le)) or vector(0)"
         }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Incidents Created (rate)",
-      "gridPos": {"x": 6, "y": 0, "w": 18, "h": 8},
+      "title": "Incidents Created Over Time",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 16,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 20
+          }
+        }
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(incidents_total{status=\"open\"}[5m]))"
+          "expr": "sum(rate(incidents_total{status=\"open\"}[5m]))",
+          "legendFormat": "New Incidents/s"
+        }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Top Noisy Services",
+      "gridPos": {
+        "x": 16,
+        "y": 4,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, sum by (service) (alerts_received_total))",
+          "legendFormat": "{{service}}",
+          "format": "table",
+          "instant": true
         }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Alerts Received (rate)",
-      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+      "title": "Alerts Received by Severity",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (severity) (rate(alerts_received_total[5m]))"
+          "expr": "sum by (severity) (rate(alerts_received_total[5m]))",
+          "legendFormat": "{{severity}}"
         }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Alert Correlation Outcomes (rate)",
-      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "title": "Alert Correlation Outcomes",
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (result) (rate(alerts_correlated_total[5m]))"
+          "expr": "sum by (result) (rate(alerts_correlated_total[5m]))",
+          "legendFormat": "{{result}}"
         }
       ]
     }

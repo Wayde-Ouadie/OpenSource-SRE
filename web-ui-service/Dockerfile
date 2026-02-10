@@ -21,6 +21,9 @@ RUN mkdir -p /var/cache/nginx /var/run /run \
 
 USER nginx
 
+HEALTHCHECK --interval=10s --timeout=3s --retries=5 \
+	CMD wget -q -O - http://127.0.0.1:8080/health | grep -q ok || exit 1
+
 EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

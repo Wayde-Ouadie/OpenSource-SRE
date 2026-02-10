@@ -1,9 +1,11 @@
 import os
 import sys
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from typing import Any
 import logging
+import json
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -13,30 +15,53 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
 from sqlalchemy import JSON, DateTime, String, create_engine, select
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+from starlette.middleware.base import BaseHTTPMiddleware
 
-# Setup structured logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    stream=sys.stdout
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+INCIDENT_MGMT_BASE_URL = os.environ.get(
+    "INCIDENT_MGMT_BASE_URL", "http://incident-management:8002"
 )
-logger = logging.getLogger("alert-ingestion")
-
-app = FastAPI(
-    title="alert-ingestion-service",
-    description="Receives and correlates alerts into incidents",
-    version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
-)
-
-INCIDENT_MGMT_BASE_URL = os.environ.get("INCIDENT_MGMT_BASE_URL", "http://incident-management:8002")
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
     "postgresql+psycopg2://opensource:opensource@postgres:5432/incident_management",
 )
 
+# ---------------------------------------------------------------------------
+# Structured JSON Logging
+# ---------------------------------------------------------------------------
+class JSONFormatter(logging.Formatter):
+    """JSON formatter for structured logging."""
 
+    def format(self, record: logging.LogRecord) -> str:
+        log_data = {
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        # Merge any extra fields passed via `extra={…}`
+        for key in ("request_id", "service", "severity", "alert_id", "incident_id", "action"):
+            val = getattr(record, key, None)
+            if val is not None:
+                log_data[key] = val
+        if record.exc_info:
+            log_data["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_data)
+
+
+_handler = logging.StreamHandler(sys.stdout)
+_handler.setFormatter(JSONFormatter())
+logger = logging.getLogger("alert-ingestion")
+logger.setLevel(logging.INFO)
+logger.handlers.clear()
+logger.addHandler(_handler)
+logger.propagate = False
+
+# ---------------------------------------------------------------------------
+# Database
+# ---------------------------------------------------------------------------
 class Base(DeclarativeBase):
     pass
 
@@ -56,11 +81,9 @@ class Alert(Base):
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
-
-def _init_models() -> None:
-    Base.metadata.create_all(bind=engine)
-
-
+# ---------------------------------------------------------------------------
+# Prometheus Metrics
+# ---------------------------------------------------------------------------
 ALERTS_RECEIVED_TOTAL = Counter(
     "alerts_received_total",
     "Total alerts received",
@@ -73,23 +96,24 @@ ALERTS_CORRELATED_TOTAL = Counter(
     ["result"],
 )
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+VALID_SEVERITIES = {"critical", "high", "medium", "low"}
+SEVERITY_ALIASES = {"warn": "medium", "warning": "medium", "error": "high"}
+
 
 def _normalize_severity(value: str) -> str:
     v = (value or "").strip().lower()
-    if v in {"critical", "high", "medium", "low"}:
+    if v in VALID_SEVERITIES:
         return v
-    if v in {"warn", "warning"}:
-        return "medium"
-    if v in {"error"}:
-        return "high"
-    return "low"
+    return SEVERITY_ALIASES.get(v, "low")
 
 
 def _parse_timestamp(value: str | None) -> datetime:
     if not value:
         return datetime.now(timezone.utc)
     try:
-        # Accepts ISO8601 like 2026-03-08T15:30:00Z
         if value.endswith("Z"):
             return datetime.fromisoformat(value.replace("Z", "+00:00"))
         dt = datetime.fromisoformat(value)
@@ -98,6 +122,15 @@ def _parse_timestamp(value: str | None) -> datetime:
         return datetime.now(timezone.utc)
 
 
+def _create_http_client() -> httpx.AsyncClient:
+    """Create a resilient async HTTP client with retries."""
+    transport = httpx.AsyncHTTPTransport(retries=3)
+    return httpx.AsyncClient(timeout=httpx.Timeout(5.0), transport=transport)
+
+
+# ---------------------------------------------------------------------------
+# Pydantic Models
+# ---------------------------------------------------------------------------
 class AlertIn(BaseModel):
     service: str = Field(min_length=1)
     severity: str = Field(min_length=1)
@@ -113,39 +146,72 @@ class AlertOut(BaseModel):
     action: str
 
 
-@app.middleware("http")
-async def add_request_id(request: Request, call_next):
-    """Add request ID to all requests."""
-    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
-    request.state.request_id = request_id
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = request_id
-    return response
+# ---------------------------------------------------------------------------
+# Request ID Middleware
+# ---------------------------------------------------------------------------
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    """Add X-Request-ID to every request & response."""
+
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
 
 
+# ---------------------------------------------------------------------------
+# Lifespan — run table creation once at startup
+# ---------------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Creating database tables (if not exist)")
+    Base.metadata.create_all(bind=engine)
+    logger.info("Alert-ingestion service ready")
+    yield
+
+
+# ---------------------------------------------------------------------------
+# Application
+# ---------------------------------------------------------------------------
+app = FastAPI(
+    title="alert-ingestion-service",
+    description="Receives and correlates alerts into incidents",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan,
+)
+
+from app.tracing import init_tracing
+init_tracing(app)
+
+app.add_middleware(RequestIDMiddleware)
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
 @app.get("/health")
 def health():
     """Health check endpoint."""
-    logger.info("Health check requested")
     return {"status": "ok", "service": "alert-ingestion"}
 
 
 @app.get("/metrics")
 def metrics():
+    """Prometheus metrics endpoint."""
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.post("/api/v1/alerts", response_model=AlertOut)
 async def create_alert(payload: AlertIn, request: Request):
-    """Create a new alert and correlate it to an incident."""
-    _init_models()
-    
+    """Receive, validate, normalize, and correlate an alert into an incident."""
     request_id = getattr(request.state, "request_id", "unknown")
-    logger.info(f"Received alert", extra={
-        "service": payload.service,
-        "severity": payload.severity,
-        "request_id": request_id
-    })
+    logger.info(
+        "Received alert",
+        extra={"service": payload.service, "severity": payload.severity, "request_id": request_id},
+    )
 
     severity = _normalize_severity(payload.severity)
     ALERTS_RECEIVED_TOTAL.labels(severity=severity).inc()
@@ -162,14 +228,10 @@ async def create_alert(payload: AlertIn, request: Request):
     action = "created_new_incident"
     status = "correlated"
 
-    # Correlate: same service + severity within 5 minutes, status=open.
+    # Correlation: same service + severity within 5 minutes, status=open
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
     try:
-        transport = httpx.AsyncHTTPTransport(retries=3)
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(5.0),
-            transport=transport
-        ) as client:
+        async with _create_http_client() as client:
             r = await client.get(
                 f"{INCIDENT_MGMT_BASE_URL}/api/v1/incidents",
                 params={"status": "open", "service": alert.service, "severity": alert.severity},
@@ -193,8 +255,11 @@ async def create_alert(payload: AlertIn, request: Request):
                 r2.raise_for_status()
                 incident_id = (r2.json() or {}).get("id")
     except Exception as e:
-        # Keep skeleton resilient: store alert even if IM is down.
-        logger.warning(f"Failed to contact incident-management: {str(e)}", extra={"request_id": request_id})
+        # Keep service resilient: store alert even if incident-management is down
+        logger.warning(
+            f"Failed to contact incident-management: {e}",
+            extra={"request_id": request_id},
+        )
         status = "accepted"
         action = "stored_only"
 
@@ -211,13 +276,16 @@ async def create_alert(payload: AlertIn, request: Request):
         session.add(alert)
         session.commit()
         session.refresh(alert)
-    
-    logger.info(f"Alert processed", extra={
-        "alert_id": str(alert.id),
-        "incident_id": incident_id,
-        "action": action,
-        "request_id": request_id
-    })
+
+    logger.info(
+        "Alert processed",
+        extra={
+            "alert_id": str(alert.id),
+            "incident_id": incident_id,
+            "action": action,
+            "request_id": request_id,
+        },
+    )
 
     return AlertOut(
         alert_id=str(alert.id),
@@ -229,7 +297,7 @@ async def create_alert(payload: AlertIn, request: Request):
 
 @app.get("/api/v1/alerts/{alert_id}")
 def get_alert(alert_id: str):
-    _init_models()
+    """Retrieve a single alert by ID."""
     try:
         alert_uuid = uuid.UUID(alert_id)
     except ValueError:

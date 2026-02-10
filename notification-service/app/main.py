@@ -1,12 +1,16 @@
+import os
 import sys
+import httpx
 import uuid
 import logging
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, Request
-from fastapi.responses import Response
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
+
+VALID_CHANNELS = {"mock", "email", "webhook", "slack"}
 
 # Setup structured logging
 logging.basicConfig(
@@ -23,6 +27,9 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+from app.tracing import init_tracing
+init_tracing(app)
 
 NOTIFICATIONS_SENT_TOTAL = Counter(
     "notifications_sent_total",
@@ -66,23 +73,116 @@ class NotifyIn(BaseModel):
     target: str | None = None
 
 
-@app.post("/api/v1/notify")
-def notify(payload: NotifyIn, request: Request):
+@app.post("/api/v1/notify", status_code=201)
+async def notify(payload: NotifyIn, request: Request):
     """Send a notification."""
     request_id = getattr(request.state, "request_id", "unknown")
     channel = (payload.channel or "mock").strip().lower()
+
+    if channel not in VALID_CHANNELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid channel '{channel}'. Must be one of: {', '.join(sorted(VALID_CHANNELS))}",
+        )
+
     ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
-    # Skeleton behavior: log to stdout.
-    logger.info(f"Notification sent", extra={
-        "channel": channel,
-        "incident_id": payload.incident_id,
-        "target": payload.target,
-        "notification_message": payload.message[:100],
-        "request_id": request_id,
-        "timestamp": ts
-    })
+    try:
+        if channel == "email":
+            # Real email sending via Resend API (https://resend.com/docs/api-reference)
+            api_key = os.environ.get("RESEND_API_KEY", "")
+            sender = os.environ.get("RESEND_FROM", "noreply@transcendence.games")
 
-    NOTIFICATIONS_SENT_TOTAL.labels(channel=channel, status="sent").inc()
-    ONCALL_NOTIFICATIONS_SENT_TOTAL.labels(channel=channel).inc()
-    return {"status": "sent", "channel": channel, "incident_id": payload.incident_id}
+            if not api_key or "PLACEHOLDER" in api_key.upper():
+                logger.warning(
+                    "RESEND_API_KEY not configured – email logged but not sent.",
+                    extra={"incident_id": payload.incident_id, "request_id": request_id},
+                )
+            else:
+                recipients = [payload.target] if payload.target else ["devops@transcendence.games"]
+                email_payload = {
+                    "from": sender,
+                    "to": recipients,
+                    "subject": f"[IMS] Incident Alert: {payload.incident_id}",
+                    "html": (
+                        f"<h2>Incident Notification</h2>"
+                        f"<p><strong>Incident ID:</strong> {payload.incident_id}</p>"
+                        f"<p><strong>Message:</strong> {payload.message}</p>"
+                        f"<p><em>Sent at {ts}</em></p>"
+                    ),
+                }
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    r = await client.post(
+                        "https://api.resend.com/emails",
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json=email_payload,
+                    )
+                    r.raise_for_status()
+                    logger.info(
+                        f"Email sent via Resend: status={r.status_code}",
+                        extra={
+                            "incident_id": payload.incident_id,
+                            "recipients": recipients,
+                            "resend_response": r.json(),
+                        },
+                    )
+
+        elif channel == "webhook":
+            # Webhook notification delivery
+            target_url = payload.target
+            if target_url and target_url.startswith("http"):
+                webhook_body = {
+                    "incident_id": payload.incident_id,
+                    "message": payload.message,
+                    "timestamp": ts,
+                }
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    r = await client.post(target_url, json=webhook_body)
+                    r.raise_for_status()
+                    logger.info(
+                        f"Webhook delivered: status={r.status_code}",
+                        extra={"incident_id": payload.incident_id, "target": target_url},
+                    )
+            else:
+                logger.warning(
+                    "Webhook channel used but no valid target URL provided – logged only.",
+                    extra={"incident_id": payload.incident_id, "target": target_url},
+                )
+
+        # Log notification details (always, for all channels)
+        logger.info(
+            "Notification processed",
+            extra={
+                "channel": channel,
+                "incident_id": payload.incident_id,
+                "target": payload.target,
+                "notification_message": payload.message[:100],
+                "request_id": request_id,
+                "timestamp": ts,
+            },
+        )
+
+        NOTIFICATIONS_SENT_TOTAL.labels(channel=channel, status="sent").inc()
+        ONCALL_NOTIFICATIONS_SENT_TOTAL.labels(channel=channel).inc()
+    except httpx.HTTPStatusError as e:
+        NOTIFICATIONS_SENT_TOTAL.labels(channel=channel, status="failed").inc()
+        logger.error(
+            f"Notification delivery failed (HTTP {e.response.status_code}): {e}",
+            extra={"channel": channel, "incident_id": payload.incident_id},
+        )
+        raise HTTPException(status_code=502, detail=f"Upstream delivery failed: {e.response.status_code}")
+    except Exception as e:
+        NOTIFICATIONS_SENT_TOTAL.labels(channel=channel, status="failed").inc()
+        logger.error(
+            f"Notification delivery failed: {e}",
+            extra={"channel": channel, "incident_id": payload.incident_id},
+        )
+        raise HTTPException(status_code=500, detail="Notification delivery failed")
+
+    return JSONResponse(
+        status_code=201,
+        content={"status": "sent", "channel": channel, "incident_id": payload.incident_id},
+    )

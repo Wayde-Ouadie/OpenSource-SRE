@@ -51,7 +51,7 @@ test-all: health test-integration test-e2e test-metrics
 	@echo "✓ All tests completed!"
 
 pipeline:
-	@bash run-pipeline.sh
+	@bash scripts/run-pipeline.sh
 
 workflow-quality:
 	@bash scripts/workflows-tests/quality-check-workflow.sh
