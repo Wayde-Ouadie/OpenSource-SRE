@@ -336,7 +336,6 @@ incident-management-service/**/*.log
 alert-ingestion-service/**/*.log
 oncall-service/**/*.log
 notification-service/**/*.log
-monitoring-service/**/*.log
 gateway-service/**/*.log
 
 # =============================================================================
