@@ -380,4 +380,4 @@ make clean                          # Remove everything (images, volumes)
 
 ---
 
-Built for OpenSource Days Event — Hackathon 2026
+Built in 24hrs for OpenSource Days Event — Hackathon 2026
