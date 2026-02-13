@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
 from pydantic import BaseModel, Field
-from sqlalchemy import JSON, DateTime, String, create_engine, Uuid
+from sqlalchemy import JSON, DateTime, String, Uuid, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from starlette.middleware.base import BaseHTTPMiddleware
 
