@@ -12,8 +12,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
 from pydantic import BaseModel, Field
-from sqlalchemy import JSON, DateTime, String, create_engine
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import JSON, DateTime, String, create_engine, Uuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -48,6 +47,9 @@ INCIDENT_MGMT_BASE_URL = os.environ.get(
     "INCIDENT_MGMT_BASE_URL", "http://incident-management:8002"
 )
 DATABASE_URL = _build_database_url()
+
+# Whether we're using SQLite (for testing) or PostgreSQL
+_USE_SQLITE = "sqlite" in DATABASE_URL
 
 # ---------------------------------------------------------------------------
 # Structured JSON Logging
@@ -89,9 +91,9 @@ class Base(DeclarativeBase):
 
 class Alert(Base):
     __tablename__ = "alerts"
-    __table_args__ = {"schema": "alert_ingestion"}
+    __table_args__ = {} if _USE_SQLITE else {"schema": "alert_ingestion"}
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     service: Mapped[str] = mapped_column(String(200), nullable=False)
     severity: Mapped[str] = mapped_column(String(50), nullable=False)
     message: Mapped[str] = mapped_column(String(1000), nullable=False)
