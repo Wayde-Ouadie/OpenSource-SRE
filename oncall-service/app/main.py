@@ -48,6 +48,7 @@ def _build_database_url() -> str:
 
 
 DATABASE_URL = _build_database_url()
+_USE_SQLITE = "sqlite" in DATABASE_URL
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -70,7 +71,7 @@ class Base(DeclarativeBase):
 
 class ScheduleRow(Base):
     __tablename__ = "oncall_schedules"
-    __table_args__ = {"schema": "oncall"}
+    __table_args__ = {} if _USE_SQLITE else {"schema": "oncall"}
 
     team: Mapped[str] = mapped_column(String(200), primary_key=True)
     primary: Mapped[list[str]] = mapped_column(JSON, nullable=False)
