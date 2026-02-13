@@ -1,6 +1,7 @@
 name: gateway
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "gateway-service/**"

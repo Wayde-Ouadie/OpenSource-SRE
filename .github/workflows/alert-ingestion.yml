@@ -1,6 +1,7 @@
 name: alert-ingestion
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "alert-ingestion-service/**"

@@ -1,6 +1,7 @@
 name: web-ui
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "web-ui-service/**"

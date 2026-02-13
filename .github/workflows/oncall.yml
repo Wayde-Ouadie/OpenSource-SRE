@@ -1,6 +1,7 @@
 name: oncall
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "oncall-service/**"

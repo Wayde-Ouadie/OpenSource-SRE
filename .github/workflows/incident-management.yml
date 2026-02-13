@@ -1,6 +1,7 @@
 name: incident-management
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "incident-management-service/**"
